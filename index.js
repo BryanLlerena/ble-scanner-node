@@ -312,7 +312,7 @@ noble.on('discover', peripheral => {
   // }
   
   // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
-  if (deviceData.isBeacon && deviceData.deviceId.startsWith(TARGET_MAC_PREFIX)) {
+  if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
     // Guardar en cache para procesar cada segundo (no directamente en BD)
     detectedDevicesCache.set(deviceData.deviceId, deviceData);
     
