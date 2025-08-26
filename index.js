@@ -297,17 +297,19 @@ noble.on('discover', peripheral => {
   const deviceData = processDevice(peripheral);
   
   // Debug: Mostrar todos los dispositivos BLE detectados para diagnóstico
-  console.log(`🔍 DEBUG - Dispositivo detectado:`);
-  console.log(`   ID: ${deviceData.deviceId}`);
-  console.log(`   MAC: ${deviceData.mac}`);
-  console.log(`   Nombre: ${deviceData.name || 'Sin nombre'}`);
-  console.log(`   RSSI: ${deviceData.rssi}`);
-  console.log(`   Es Beacon: ${deviceData.isBeacon}`);
-  console.log(`   Tipo: ${deviceData.type}`);
-  console.log(`   ManufacturerData: ${deviceData.manufacturerData || 'Ninguno'}`);
-  console.log(`   ServiceData: ${deviceData.serviceData || 'Ninguno'}`);
-  console.log(`   Cumple MAC filter: ${deviceData.mac.startsWith(TARGET_MAC_PREFIX)}`);
-  console.log('   ---');
+  if(deviceData.distanceInM < 1){
+    console.log(`🔍 DEBUG - Dispositivo detectado:`);
+    console.log(`   ID: ${peripheral.deviceId}`);
+    console.log(`   MAC: ${deviceData.mac}`);
+    console.log(`   Nombre: ${deviceData.name || 'Sin nombre'}`);
+    console.log(`   RSSI: ${deviceData.rssi}`);
+    console.log(`   Es Beacon: ${deviceData.isBeacon}`);
+    console.log(`   Tipo: ${deviceData.type}`);
+    console.log(`   ManufacturerData: ${deviceData.manufacturerData || 'Ninguno'}`);
+    console.log(`   ServiceData: ${deviceData.serviceData || 'Ninguno'}`);
+    console.log(`   Cumple MAC filter: ${deviceData.mac.startsWith(TARGET_MAC_PREFIX)}`);
+    console.log('   ---');
+  }
   
   // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
   if (deviceData.isBeacon && deviceData.deviceId.startsWith(TARGET_MAC_PREFIX)) {
