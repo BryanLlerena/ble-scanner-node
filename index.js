@@ -298,6 +298,7 @@ noble.on('discover', peripheral => {
   
   // Debug: Mostrar todos los dispositivos BLE detectados para diagnóstico
   console.log(`🔍 DEBUG - Dispositivo detectado:`);
+  console.log(`   ID: ${deviceData.deviceId}`);
   console.log(`   MAC: ${deviceData.mac}`);
   console.log(`   Nombre: ${deviceData.name || 'Sin nombre'}`);
   console.log(`   RSSI: ${deviceData.rssi}`);
@@ -309,7 +310,7 @@ noble.on('discover', peripheral => {
   console.log('   ---');
   
   // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
-  if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
+  if (deviceData.isBeacon && deviceData.deviceId.startsWith(TARGET_MAC_PREFIX)) {
     // Guardar en cache para procesar cada segundo (no directamente en BD)
     detectedDevicesCache.set(deviceData.deviceId, deviceData);
     
