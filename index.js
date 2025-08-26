@@ -301,7 +301,7 @@ noble.on('discover', peripheral => {
     // Guardar en cache para procesar cada segundo (no directamente en BD)
     detectedDevicesCache.set(deviceData.deviceId, deviceData);
     
-    // console.log(`🎯 Beacon detectado: ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
+    console.log(`🎯 Beacon detectado: ${deviceData.name} ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
     // if (deviceData.type === 'iBeacon') {
     //   console.log(`  UUID=${deviceData.uuid} | Major=${deviceData.major} | Minor=${deviceData.minor}`);
     // } else if (deviceData.type === 'Eddystone-UID') {
@@ -309,10 +309,10 @@ noble.on('discover', peripheral => {
     // }
   } else if (deviceData.isBeacon) {
     // Beacon detectado pero MAC no coincide
-    console.log(`⚪ Beacon ignorado (MAC no válida): MAC=${deviceData.mac} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
+    // console.log(`⚪ Beacon ignorado (MAC no válida): MAC=${deviceData.mac} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
   } else {
     // Dispositivo BLE normal
-    console.log(`📱 Dispositivo BLE: MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Nombre=${deviceData.name || 'Sin nombre'}`);
+    // console.log(`📱 Dispositivo BLE: MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Nombre=${deviceData.name || 'Sin nombre'}`);
   }
 });
 
