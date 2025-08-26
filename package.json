@@ -4,7 +4,11 @@
   "description": "Escaneo BLE y guardado en SQLite para Raspberry Pi",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "view": "node view-data.js",
+    "delete": "node delete-data.js",
+    "sync-status": "node sync-status.js",
+    "sync-reset": "node sync-status.js --reset"
   },
   "dependencies": {
     "@abandonware/noble": "^1.9.2-15",

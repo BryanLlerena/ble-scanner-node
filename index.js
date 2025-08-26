@@ -1,6 +1,8 @@
 // BLE Scanner para Raspberry Pi usando noble y SQLite
 const noble = require('@abandonware/noble');
 const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+const { syncBeaconEvents } = require('./sync');
 
 // Configuraciones (basadas en tu app React Native)
 const SCAN_RANGE = 10; // metros - rango máximo de detección
@@ -8,7 +10,7 @@ const DEBOUNCE_TIME = 60; // segundos - tiempo de gracia para cerrar eventos
 const TARGET_MAC_PREFIX = "bc:57:29"; // Solo procesar MACs que empiecen con esto
 const UNIT = "TEST_UNIT"; // unidad o identificador del dispositivo
 
-// Inicializar base de datos SQLite
+// Configuración de la base de datos
 const db = new sqlite3.Database('beacons.db');
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS beacon_events (
@@ -39,10 +41,24 @@ db.serialize(() => {
   // Índices para mejorar performance
   db.run(`CREATE INDEX IF NOT EXISTS idx_beacon_mac ON beacon_events(beaconMac)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_event_state ON beacon_events(eventState)`);
+  
+  // Agregar columnas de sincronización si no existen (para bases de datos existentes)
+  db.run(`ALTER TABLE beacon_events ADD COLUMN syncStatus TEXT DEFAULT 'pending'`, () => {});
+  db.run(`ALTER TABLE beacon_events ADD COLUMN syncTimestamp DATETIME`, () => {});
+  db.run(`ALTER TABLE beacon_events ADD COLUMN uuid TEXT`, () => {});
 });
 
 // Cache temporal para dispositivos detectados
 const detectedDevicesCache = new Map();
+
+// Generar UUID simple
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 
 // Calcular distancia basada en RSSI
 function calculateDistance(rssi, txPower = -59) {
@@ -66,7 +82,8 @@ function calculateDistanceInM(rssi, txPower = -59) {
 // Función para guardar evento de beacon (basada en tu lógica React Native)
 function saveBeaconEvent(deviceData) {
   const timestamp = new Date().toISOString();
-  console.log(`💾 Guardando nuevo evento para beacon: ${deviceData.mac}`);
+  const eventUuid = generateUUID(); // UUID único para el evento
+  console.log(`💾 Guardando nuevo evento para beacon: ${deviceData.mac} (UUID: ${eventUuid})`);
   
   // Crear array inicial de RSSI según distancia
   const rssiEntry = {
@@ -79,8 +96,8 @@ function saveBeaconEvent(deviceData) {
   const rssi_discard = deviceData.distanceInM > 10 ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
   
   db.run(
-    `INSERT INTO beacon_events (deviceId, beaconMac, name, rssi, rssi_discard, timestamp, type, uuid, major, minor, txPower, namespace, instance, distance, distanceInM, eventState, f_inicio, f_final, unit, manufacturerData, serviceData) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, NULL, ?, ?, ?)`,
+    `INSERT INTO beacon_events (deviceId, beaconMac, name, rssi, rssi_discard, timestamp, type, uuid, major, minor, txPower, namespace, instance, distance, distanceInM, eventState, f_inicio, f_final, unit, manufacturerData, serviceData, syncStatus) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, NULL, ?, ?, ?, 'pending')`,
     [
       deviceData.deviceId,
       deviceData.mac,
@@ -89,7 +106,7 @@ function saveBeaconEvent(deviceData) {
       rssi_discard, // Array JSON de RSSI para distancia > 10m
       timestamp,
       deviceData.type,
-      deviceData.uuid,
+      eventUuid, // UUID del evento para sincronización
       deviceData.major,
       deviceData.minor,
       deviceData.txPower,
@@ -157,7 +174,11 @@ function updateBeaconEvent(deviceData, eventId) {
       
       // Actualizar evento con arrays actualizados
       db.run(
-        `UPDATE beacon_events SET rssi = ?, rssi_discard = ?, timestamp = ?, distance = ?, distanceInM = ?, f_final = ?
+        `UPDATE beacon_events SET rssi = ?, rssi_discard = ?, timestamp = ?, distance = ?, distanceInM = ?, f_final = ?, 
+         syncStatus = CASE 
+           WHEN syncStatus = 'sent' THEN 'updated' 
+           ELSE syncStatus 
+         END
          WHERE id = ?`,
         [
           JSON.stringify(currentRssiArray), 
@@ -183,7 +204,10 @@ function closeBeaconEvent(eventId, deviceMac) {
   console.log(`🔒 Cerrando evento ${eventId} para beacon: ${deviceMac}`);
   
   db.run(
-    `UPDATE beacon_events SET eventState = 'closed', f_final = ? WHERE id = ?`,
+    `UPDATE beacon_events SET eventState = 'closed', f_final = ?, syncStatus = CASE 
+       WHEN syncStatus = 'sent' THEN 'updated' 
+       ELSE syncStatus 
+     END WHERE id = ?`,
     [timestamp, eventId],
     err => {
       if (err) console.error('❌ Error cerrando evento:', err);
@@ -374,6 +398,25 @@ function processDetectedDevices() {
 
 // Procesar dispositivos cada segundo (como en tu app React Native)
 setInterval(processDetectedDevices, 1000);
+
+// Sincronización con API cada 30 segundos (como en React Native)
+setInterval(async () => {
+  try {
+    await syncBeaconEvents(db);
+  } catch (error) {
+    console.error('Error en sincronización automática:', error.message);
+  }
+}, 30000);
+
+// Sincronización inicial después de 10 segundos
+setTimeout(async () => {
+  console.log('🚀 Iniciando primera sincronización...');
+  try {
+    await syncBeaconEvents(db);
+  } catch (error) {
+    console.error('Error en sincronización inicial:', error.message);
+  }
+}, 10000);
 
 process.on('SIGINT', () => {
   console.log('\nFinalizando aplicación...');
