@@ -7,7 +7,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "noble": "^1.9.2-15",
+    "@abandonware/noble": "^1.9.2-15",
     "sqlite3": "^5.1.6"
   }
 }

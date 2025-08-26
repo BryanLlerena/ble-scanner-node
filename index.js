@@ -1,5 +1,5 @@
 // BLE Scanner para Raspberry Pi usando noble y SQLite
-const noble = require('noble');
+const noble = require('@abandonware/noble');
 const sqlite3 = require('sqlite3').verbose();
 
 // Inicializar base de datos SQLite
