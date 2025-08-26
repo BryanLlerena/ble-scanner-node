@@ -20,59 +20,42 @@ const DEFAULT_HEADERS = {
   'User-Agent': 'BeaconApp/1.0 (NodeJS)'
 };
 
-// Función para verificar conexión a internet (métodos simplificados)
+// Función para verificar conexión a internet usando DNS lookup
 async function checkInternetConnection() {
-  // Método 1: Intentar HTTP request a Google DNS
-  const httpTest = () => {
+  const dns = require('dns');
+  
+  // Método DNS lookup (más ligero y rápido)
+  const dnsTest = () => {
     return new Promise((resolve) => {
-      const http = require('http');
-      const req = http.get('http://8.8.8.8', { timeout: 3000 }, (res) => {
-        resolve(true);
-      });
-      req.on('error', () => resolve(false));
-      req.on('timeout', () => {
-        req.destroy();
-        resolve(false);
+      dns.lookup('google.com', { timeout: 3000 }, (err) => {
+        resolve(!err);
       });
     });
   };
 
-  // Método 2: Intentar conexión TCP
-  const tcpTest = () => {
+  // Método DNS alternativo como respaldo
+  const dnsTestBackup = () => {
     return new Promise((resolve) => {
-      const options = {
-        hostname: '8.8.8.8',
-        port: 53,
-        timeout: 3000
-      };
-      
-      const req = require('net').createConnection(options, () => {
-        req.end();
-        resolve(true);
-      });
-      
-      req.on('error', () => resolve(false));
-      req.on('timeout', () => {
-        req.destroy();
-        resolve(false);
+      dns.lookup('cloudflare.com', { timeout: 3000 }, (err) => {
+        resolve(!err);
       });
     });
   };
 
   try {
-    // Probar método HTTP primero (más rápido)
-    console.log('🌐 Verificando conexión HTTP...');
-    const httpResult = await httpTest();
-    if (httpResult) {
-      console.log('✅ Conexión HTTP exitosa');
+    // Probar DNS lookup primero (más eficiente)
+    console.log('🌐 Verificando conexión DNS...');
+    const dnsResult = await dnsTest();
+    if (dnsResult) {
+      console.log('✅ Conexión DNS exitosa');
       return true;
     }
 
-    // Si falla, probar TCP
-    console.log('🌐 Verificando conexión TCP...');
-    const tcpResult = await tcpTest();
-    if (tcpResult) {
-      console.log('✅ Conexión TCP exitosa');
+    // Si falla, probar servidor DNS alternativo
+    console.log('🌐 Verificando DNS alternativo...');
+    const dnsBackupResult = await dnsTestBackup();
+    if (dnsBackupResult) {
+      console.log('✅ Conexión DNS alternativa exitosa');
       return true;
     }
 
