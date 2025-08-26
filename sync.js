@@ -20,7 +20,7 @@ const DEFAULT_HEADERS = {
   'User-Agent': 'BeaconApp/1.0 (NodeJS)'
 };
 
-// Función para verificar conexión a internet (múltiples métodos)
+// Función para verificar conexión a internet (métodos simplificados)
 async function checkInternetConnection() {
   // Método 1: Intentar HTTP request a Google DNS
   const httpTest = () => {
@@ -59,26 +59,6 @@ async function checkInternetConnection() {
     });
   };
 
-  // Método 3: Intentar HTTP request a la API directamente
-  const apiTest = () => {
-    return new Promise((resolve) => {
-      const urlObj = new URL(API_BASE_URL);
-      const http = require('http');
-      
-      const req = http.get(`http://${urlObj.hostname}:${urlObj.port || 80}`, { 
-        timeout: 5000 
-      }, (res) => {
-        resolve(true);
-      });
-      
-      req.on('error', () => resolve(false));
-      req.on('timeout', () => {
-        req.destroy();
-        resolve(false);
-      });
-    });
-  };
-
   try {
     // Probar método HTTP primero (más rápido)
     console.log('🌐 Verificando conexión HTTP...');
@@ -93,14 +73,6 @@ async function checkInternetConnection() {
     const tcpResult = await tcpTest();
     if (tcpResult) {
       console.log('✅ Conexión TCP exitosa');
-      return true;
-    }
-
-    // Como último recurso, probar conectividad directa a la API
-    console.log('🌐 Verificando conectividad directa a API...');
-    const apiResult = await apiTest();
-    if (apiResult) {
-      console.log('✅ API accesible directamente');
       return true;
     }
 
