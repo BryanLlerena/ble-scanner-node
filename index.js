@@ -5,7 +5,7 @@ const sqlite3 = require('sqlite3').verbose();
 // Configuraciones (basadas en tu app React Native)
 const SCAN_RANGE = 10; // metros - rango máximo de detección
 const DEBOUNCE_TIME = 60; // segundos - tiempo de gracia para cerrar eventos
-const TARGET_MAC_PREFIX = "BC:57:29"; // Solo procesar MACs que empiecen con esto
+const TARGET_MAC_PREFIX = "bc:57:29"; // Solo procesar MACs que empiecen con esto
 const UNIT = "TEST_UNIT"; // unidad o identificador del dispositivo
 
 // Inicializar base de datos SQLite
@@ -297,19 +297,19 @@ noble.on('discover', peripheral => {
   const deviceData = processDevice(peripheral);
   
   // Debug: Mostrar todos los dispositivos BLE detectados para diagnóstico
-  if(deviceData.distanceInM < 1){
-    console.log(`🔍 DEBUG - Dispositivo detectado:`);
-    console.log(`   ID: ${peripheral.deviceId}`);
-    console.log(`   MAC: ${deviceData.mac}`);
-    console.log(`   Nombre: ${deviceData.name || 'Sin nombre'}`);
-    console.log(`   RSSI: ${deviceData.rssi}`);
-    console.log(`   Es Beacon: ${deviceData.isBeacon}`);
-    console.log(`   Tipo: ${deviceData.type}`);
-    console.log(`   ManufacturerData: ${deviceData.manufacturerData || 'Ninguno'}`);
-    console.log(`   ServiceData: ${deviceData.serviceData || 'Ninguno'}`);
-    console.log(`   Cumple MAC filter: ${deviceData.mac.startsWith(TARGET_MAC_PREFIX)}`);
-    console.log('   ---');
-  }
+  // if(deviceData.distanceInM < 1){
+  //   console.log(`🔍 DEBUG - Dispositivo detectado:`);
+  //   console.log(`   ID: ${peripheral.deviceId}`);
+  //   console.log(`   MAC: ${deviceData.mac}`);
+  //   console.log(`   Nombre: ${deviceData.name || 'Sin nombre'}`);
+  //   console.log(`   RSSI: ${deviceData.rssi}`);
+  //   console.log(`   Es Beacon: ${deviceData.isBeacon}`);
+  //   console.log(`   Tipo: ${deviceData.type}`);
+  //   console.log(`   ManufacturerData: ${deviceData.manufacturerData || 'Ninguno'}`);
+  //   console.log(`   ServiceData: ${deviceData.serviceData || 'Ninguno'}`);
+  //   console.log(`   Cumple MAC filter: ${deviceData.mac.startsWith(TARGET_MAC_PREFIX)}`);
+  //   console.log('   ---');
+  // }
   
   // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
   if (deviceData.isBeacon && deviceData.deviceId.startsWith(TARGET_MAC_PREFIX)) {
@@ -317,17 +317,17 @@ noble.on('discover', peripheral => {
     detectedDevicesCache.set(deviceData.deviceId, deviceData);
     
     console.log(`🎯 Beacon detectado: ${deviceData.name} ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
-    if (deviceData.type === 'iBeacon') {
-      console.log(`  UUID=${deviceData.uuid} | Major=${deviceData.major} | Minor=${deviceData.minor}`);
-    } else if (deviceData.type === 'Eddystone-UID') {
-      console.log(`  Namespace=${deviceData.namespace} | Instance=${deviceData.instance}`);
-    }
+    // if (deviceData.type === 'iBeacon') {
+    //   console.log(`  UUID=${deviceData.uuid} | Major=${deviceData.major} | Minor=${deviceData.minor}`);
+    // } else if (deviceData.type === 'Eddystone-UID') {
+    //   console.log(`  Namespace=${deviceData.namespace} | Instance=${deviceData.instance}`);
+    // }
   } else if (deviceData.isBeacon) {
     // Beacon detectado pero MAC no coincide
-    console.log(`⚪ Beacon ignorado (MAC no válida): MAC=${deviceData.mac} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
+    // console.log(`⚪ Beacon ignorado (MAC no válida): MAC=${deviceData.mac} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
   } else {
     // Dispositivo BLE normal
-    console.log(`📱 Dispositivo BLE: MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Nombre=${deviceData.name || 'Sin nombre'}`);
+    // console.log(`📱 Dispositivo BLE: MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Nombre=${deviceData.name || 'Sin nombre'}`);
   }
 });
 
