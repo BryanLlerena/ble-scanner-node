@@ -1,17 +1,31 @@
 // BLE Scanner para Raspberry Pi usando noble y SQLite
+require('dotenv').config();
 const noble = require('@abandonware/noble');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { syncBeaconEvents } = require('./sync');
 
-// Configuration
-const SCAN_RANGE = 10;
-const DEBOUNCE_TIME = 60;
-const TARGET_MAC_PREFIX = "bc:57:29";
-const UNIT = "TEST_UNIT";
+// Configuración desde variables de entorno
+const SCAN_RANGE = parseFloat(process.env.SCAN_RANGE) || 10;
+const DEBOUNCE_TIME = parseInt(process.env.DEBOUNCE_TIME) || 60;
+const TARGET_MAC_PREFIX = process.env.TARGET_MAC_PREFIX || "bc:57:29";
+const UNIT = process.env.UNIT || "TEST_UNIT";
+const DB_FILE = process.env.DB_FILE || "beacons.db";
+const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || 30000;
+const INITIAL_SYNC_DELAY = parseInt(process.env.INITIAL_SYNC_DELAY) || 10000;
+const DEBUG_DEVICES = process.env.DEBUG_DEVICES === 'true';
+
+console.log('🔧 Configuración cargada:');
+console.log(`   SCAN_RANGE: ${SCAN_RANGE}m`);
+console.log(`   DEBOUNCE_TIME: ${DEBOUNCE_TIME}s`);
+console.log(`   TARGET_MAC_PREFIX: ${TARGET_MAC_PREFIX}`);
+console.log(`   UNIT: ${UNIT}`);
+console.log(`   SYNC_INTERVAL: ${SYNC_INTERVAL}ms`);
+console.log(`   DB_FILE: ${DB_FILE}`);
+console.log('');
 
 // Configuración de la base de datos
-const db = new sqlite3.Database('beacons.db');
+const db = new sqlite3.Database(DB_FILE);
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS beacon_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -313,20 +327,20 @@ noble.on('stateChange', state => {
 noble.on('discover', peripheral => {
   const deviceData = processDevice(peripheral);
   
-  // Debug: Mostrar todos los dispositivos BLE detectados para diagnóstico
-  // if(deviceData.distanceInM < 1){
-  //   console.log(`🔍 DEBUG - Dispositivo detectado:`);
-  //   console.log(`   ID: ${peripheral.deviceId}`);
-  //   console.log(`   MAC: ${deviceData.mac}`);
-  //   console.log(`   Nombre: ${deviceData.name || 'Sin nombre'}`);
-  //   console.log(`   RSSI: ${deviceData.rssi}`);
-  //   console.log(`   Es Beacon: ${deviceData.isBeacon}`);
-  //   console.log(`   Tipo: ${deviceData.type}`);
-  //   console.log(`   ManufacturerData: ${deviceData.manufacturerData || 'Ninguno'}`);
-  //   console.log(`   ServiceData: ${deviceData.serviceData || 'Ninguno'}`);
-  //   console.log(`   Cumple MAC filter: ${deviceData.mac.startsWith(TARGET_MAC_PREFIX)}`);
-  //   console.log('   ---');
-  // }
+  // Debug: Mostrar todos los dispositivos BLE detectados (controlado por variable de entorno)
+  if (DEBUG_DEVICES && deviceData.distanceInM < 1) {
+    console.log(`🔍 DEBUG - Dispositivo detectado:`);
+    console.log(`   ID: ${peripheral.deviceId}`);
+    console.log(`   MAC: ${deviceData.mac}`);
+    console.log(`   Nombre: ${deviceData.name || 'Sin nombre'}`);
+    console.log(`   RSSI: ${deviceData.rssi}`);
+    console.log(`   Es Beacon: ${deviceData.isBeacon}`);
+    console.log(`   Tipo: ${deviceData.type}`);
+    console.log(`   ManufacturerData: ${deviceData.manufacturerData || 'Ninguno'}`);
+    console.log(`   ServiceData: ${deviceData.serviceData || 'Ninguno'}`);
+    console.log(`   Cumple MAC filter: ${deviceData.mac.startsWith(TARGET_MAC_PREFIX)}`);
+    console.log('   ---');
+  }
   
   // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
   if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
@@ -371,14 +385,16 @@ function processDetectedDevices() {
 
 setInterval(processDetectedDevices, 1000);
 
+// Sincronización con API usando configuración de .env
 setInterval(async () => {
   try {
     await syncBeaconEvents(db);
   } catch (error) {
     console.error('Error en sincronización automática:', error.message);
   }
-}, 30000);
+}, SYNC_INTERVAL);
 
+// Sincronización inicial usando configuración de .env
 setTimeout(async () => {
   console.log('🚀 Iniciando primera sincronización...');
   try {
@@ -386,7 +402,7 @@ setTimeout(async () => {
   } catch (error) {
     console.error('Error en sincronización inicial:', error.message);
   }
-}, 10000);
+}, INITIAL_SYNC_DELAY);
 
 process.on('SIGINT', () => {
   console.log('\nFinalizando aplicación...');

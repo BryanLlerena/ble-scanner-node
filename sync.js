@@ -1,13 +1,17 @@
 // Módulo de sincronización con API - similar a beaconSync.ts
+require('dotenv').config();
 const https = require('https');
 const http = require('http');
 
-// Configuración de la API (igual que en React Native)
-const API_BASE_URL = "http://172.236.110.18:3001/api/v1";
+// Configuración de la API desde variables de entorno
+const API_BASE_URL = process.env.API_BASE_URL || "http://172.236.110.18:3001/api/v1";
 const API_ENDPOINTS = {
   BEACON_TRACK_MANY: `${API_BASE_URL}/beacon-track/many`,
   BEACON_TRACK_UPDATE: `${API_BASE_URL}/beacon-track`
 };
+
+// Configuración de verificación de internet
+const SKIP_INTERNET_CHECK = process.env.SKIP_INTERNET_CHECK === 'true' || false;
 
 // Headers por defecto
 const DEFAULT_HEADERS = {
@@ -16,26 +20,97 @@ const DEFAULT_HEADERS = {
   'User-Agent': 'BeaconApp/1.0 (NodeJS)'
 };
 
-// Función para verificar conexión a internet
+// Función para verificar conexión a internet (múltiples métodos)
 async function checkInternetConnection() {
-  return new Promise((resolve) => {
-    const options = {
-      hostname: '8.8.8.8',
-      port: 53,
-      timeout: 3000
-    };
-    
-    const req = require('net').createConnection(options, () => {
-      req.end();
-      resolve(true);
+  // Método 1: Intentar HTTP request a Google DNS
+  const httpTest = () => {
+    return new Promise((resolve) => {
+      const http = require('http');
+      const req = http.get('http://8.8.8.8', { timeout: 3000 }, (res) => {
+        resolve(true);
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false);
+      });
     });
-    
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => {
-      req.destroy();
-      resolve(false);
+  };
+
+  // Método 2: Intentar conexión TCP
+  const tcpTest = () => {
+    return new Promise((resolve) => {
+      const options = {
+        hostname: '8.8.8.8',
+        port: 53,
+        timeout: 3000
+      };
+      
+      const req = require('net').createConnection(options, () => {
+        req.end();
+        resolve(true);
+      });
+      
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false);
+      });
     });
-  });
+  };
+
+  // Método 3: Intentar HTTP request a la API directamente
+  const apiTest = () => {
+    return new Promise((resolve) => {
+      const urlObj = new URL(API_BASE_URL);
+      const http = require('http');
+      
+      const req = http.get(`http://${urlObj.hostname}:${urlObj.port || 80}`, { 
+        timeout: 5000 
+      }, (res) => {
+        resolve(true);
+      });
+      
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false);
+      });
+    });
+  };
+
+  try {
+    // Probar método HTTP primero (más rápido)
+    console.log('🌐 Verificando conexión HTTP...');
+    const httpResult = await httpTest();
+    if (httpResult) {
+      console.log('✅ Conexión HTTP exitosa');
+      return true;
+    }
+
+    // Si falla, probar TCP
+    console.log('🌐 Verificando conexión TCP...');
+    const tcpResult = await tcpTest();
+    if (tcpResult) {
+      console.log('✅ Conexión TCP exitosa');
+      return true;
+    }
+
+    // Como último recurso, probar conectividad directa a la API
+    console.log('🌐 Verificando conectividad directa a API...');
+    const apiResult = await apiTest();
+    if (apiResult) {
+      console.log('✅ API accesible directamente');
+      return true;
+    }
+
+    console.log('❌ Sin conexión a internet detectada');
+    return false;
+
+  } catch (error) {
+    console.log('❌ Error verificando conexión:', error.message);
+    return false;
+  }
 }
 
 // Función para hacer peticiones HTTP
@@ -305,11 +380,15 @@ async function updateExistingBeaconEvents(db) {
 async function syncBeaconEvents(db) {
   console.log('🌐 Iniciando sincronización con API...');
   
-  // Verificar conexión a internet
-  const hasInternet = await checkInternetConnection();
-  if (!hasInternet) {
-    console.log('❌ Sin conexión a internet, saltando sincronización');
-    return { success: false, error: 'No internet connection' };
+  // Verificar conexión a internet (opcional)
+  if (!SKIP_INTERNET_CHECK) {
+    const hasInternet = await checkInternetConnection();
+    if (!hasInternet) {
+      console.log('❌ Sin conexión a internet, saltando sincronización');
+      return { success: false, error: 'No internet connection' };
+    }
+  } else {
+    console.log('⚠️ Verificación de internet deshabilitada - intentando sincronización directa');
   }
   
   try {
