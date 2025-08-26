@@ -2,15 +2,22 @@
 const noble = require('@abandonware/noble');
 const sqlite3 = require('sqlite3').verbose();
 
+// Configuraciones (basadas en tu app React Native)
+const SCAN_RANGE = 10; // metros - rango máximo de detección
+const DEBOUNCE_TIME = 60; // segundos - tiempo de gracia para cerrar eventos
+const TARGET_MAC_PREFIX = "BC:57:29"; // Solo procesar MACs que empiecen con esto
+const UNIT = "TEST_UNIT"; // unidad o identificador del dispositivo
+
 // Inicializar base de datos SQLite
 const db = new sqlite3.Database('beacons.db');
 db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS beacons (
+  db.run(`CREATE TABLE IF NOT EXISTS beacon_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     deviceId TEXT,
+    beaconMac TEXT,
     name TEXT,
-    mac TEXT,
-    rssi INTEGER,
+    rssi TEXT,
+    rssi_discard TEXT,
     timestamp TEXT,
     type TEXT,
     uuid TEXT,
@@ -21,10 +28,21 @@ db.serialize(() => {
     instance TEXT,
     distance REAL,
     distanceInM REAL,
+    eventState TEXT DEFAULT 'open',
+    f_inicio TEXT,
+    f_final TEXT,
+    unit TEXT,
     manufacturerData TEXT,
     serviceData TEXT
   )`);
+  
+  // Índices para mejorar performance
+  db.run(`CREATE INDEX IF NOT EXISTS idx_beacon_mac ON beacon_events(beaconMac)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_event_state ON beacon_events(eventState)`);
 });
+
+// Cache temporal para dispositivos detectados
+const detectedDevicesCache = new Map();
 
 // Calcular distancia basada en RSSI
 function calculateDistance(rssi, txPower = -59) {
@@ -45,17 +63,30 @@ function calculateDistanceInM(rssi, txPower = -59) {
   return Math.pow(10, (txPower - rssi) / (10.0 * n));
 }
 
-// Función para guardar beacon
-function saveBeacon(deviceData) {
+// Función para guardar evento de beacon (basada en tu lógica React Native)
+function saveBeaconEvent(deviceData) {
   const timestamp = new Date().toISOString();
+  console.log(`💾 Guardando nuevo evento para beacon: ${deviceData.mac}`);
+  
+  // Crear array inicial de RSSI según distancia
+  const rssiEntry = {
+    rssi: deviceData.rssi || 0,
+    datetime: Date.now(),
+    distance: deviceData.distanceInM
+  };
+  
+  const rssi = deviceData.distanceInM <= 10 ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
+  const rssi_discard = deviceData.distanceInM > 10 ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
+  
   db.run(
-    `INSERT INTO beacons (deviceId, name, mac, rssi, timestamp, type, uuid, major, minor, txPower, namespace, instance, distance, distanceInM, manufacturerData, serviceData) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO beacon_events (deviceId, beaconMac, name, rssi, rssi_discard, timestamp, type, uuid, major, minor, txPower, namespace, instance, distance, distanceInM, eventState, f_inicio, f_final, unit, manufacturerData, serviceData) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, NULL, ?, ?, ?)`,
     [
       deviceData.deviceId,
-      deviceData.name,
       deviceData.mac,
-      deviceData.rssi,
+      deviceData.name,
+      rssi, // Array JSON de RSSI para distancia <= 10m
+      rssi_discard, // Array JSON de RSSI para distancia > 10m
       timestamp,
       deviceData.type,
       deviceData.uuid,
@@ -66,12 +97,107 @@ function saveBeacon(deviceData) {
       deviceData.instance,
       deviceData.distance,
       deviceData.distanceInM,
+      timestamp, // f_inicio
+      UNIT, // unit
       deviceData.manufacturerData,
       deviceData.serviceData
     ],
     err => {
-      if (err) console.error('Error guardando beacon:', err);
+      if (err) console.error('❌ Error guardando evento:', err);
+      else {
+        const rssiCount = deviceData.distanceInM <= 10 ? 1 : 0;
+        const rssiDiscardCount = deviceData.distanceInM > 10 ? 1 : 0;
+        console.log(`✅ Evento guardado para beacon ${deviceData.mac} | RSSI entries: ${rssiCount} | RSSI_discard entries: ${rssiDiscardCount}`);
+      }
     }
+  );
+}
+
+// Función para actualizar evento existente
+function updateBeaconEvent(deviceData, eventId) {
+  const timestamp = new Date().toISOString();
+  console.log(`🔄 Actualizando evento ${eventId} para beacon: ${deviceData.mac}`);
+  
+  // Primero obtener arrays actuales para agregar nueva entrada
+  db.get(
+    `SELECT rssi, rssi_discard FROM beacon_events WHERE id = ?`,
+    [eventId],
+    (err, row) => {
+      if (err) {
+        console.error('❌ Error obteniendo arrays actuales:', err);
+        return;
+      }
+      
+      // Parsear arrays actuales (o crear vacíos si es NULL)
+      let currentRssiArray = [];
+      let currentRssiDiscardArray = [];
+      
+      try {
+        currentRssiArray = row.rssi ? JSON.parse(row.rssi) : [];
+        currentRssiDiscardArray = row.rssi_discard ? JSON.parse(row.rssi_discard) : [];
+      } catch (parseErr) {
+        console.error('❌ Error parseando arrays JSON:', parseErr);
+        currentRssiArray = [];
+        currentRssiDiscardArray = [];
+      }
+      
+      // Crear nueva entrada
+      const newRssiEntry = {
+        rssi: deviceData.rssi || 0,
+        datetime: Date.now(),
+        distance: deviceData.distanceInM
+      };
+      
+      // Agregar nueva entrada al array correspondiente según distancia
+      if (deviceData.distanceInM <= 10) {
+        currentRssiArray.push(newRssiEntry);
+      } else {
+        currentRssiDiscardArray.push(newRssiEntry);
+      }
+      
+      // Actualizar evento con arrays actualizados
+      db.run(
+        `UPDATE beacon_events SET rssi = ?, rssi_discard = ?, timestamp = ?, distance = ?, distanceInM = ?, f_final = ?
+         WHERE id = ?`,
+        [
+          JSON.stringify(currentRssiArray), 
+          JSON.stringify(currentRssiDiscardArray), 
+          timestamp, 
+          deviceData.distance, 
+          deviceData.distanceInM, 
+          timestamp, 
+          eventId
+        ],
+        err => {
+          if (err) console.error('❌ Error actualizando evento:', err);
+          else console.log(`✅ Evento ${eventId} actualizado | RSSI entries: ${currentRssiArray.length} | RSSI_discard entries: ${currentRssiDiscardArray.length}`);
+        }
+      );
+    }
+  );
+}
+
+// Función para cerrar evento
+function closeBeaconEvent(eventId, deviceMac) {
+  const timestamp = new Date().toISOString();
+  console.log(`🔒 Cerrando evento ${eventId} para beacon: ${deviceMac}`);
+  
+  db.run(
+    `UPDATE beacon_events SET eventState = 'closed', f_final = ? WHERE id = ?`,
+    [timestamp, eventId],
+    err => {
+      if (err) console.error('❌ Error cerrando evento:', err);
+      else console.log(`✅ Evento ${eventId} cerrado`);
+    }
+  );
+}
+
+// Función para obtener evento abierto por MAC
+function getOpenEventByMac(mac, callback) {
+  db.get(
+    `SELECT * FROM beacon_events WHERE beaconMac = ? AND eventState = 'open' ORDER BY id DESC LIMIT 1`,
+    [mac],
+    callback
   );
 }
 
@@ -169,19 +295,70 @@ noble.on('stateChange', state => {
 
 noble.on('discover', peripheral => {
   const deviceData = processDevice(peripheral);
-  saveBeacon(deviceData);
   
-  if (deviceData.isBeacon) {
-    console.log(`Beacon detectado: ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
-    if (deviceData.type === 'iBeacon') {
-      console.log(`  UUID=${deviceData.uuid} | Major=${deviceData.major} | Minor=${deviceData.minor}`);
-    } else if (deviceData.type === 'Eddystone-UID') {
-      console.log(`  Namespace=${deviceData.namespace} | Instance=${deviceData.instance}`);
-    }
+  // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
+  if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
+    // Guardar en cache para procesar cada segundo (no directamente en BD)
+    detectedDevicesCache.set(deviceData.deviceId, deviceData);
+    
+    // console.log(`🎯 Beacon detectado: ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
+    // if (deviceData.type === 'iBeacon') {
+    //   console.log(`  UUID=${deviceData.uuid} | Major=${deviceData.major} | Minor=${deviceData.minor}`);
+    // } else if (deviceData.type === 'Eddystone-UID') {
+    //   console.log(`  Namespace=${deviceData.namespace} | Instance=${deviceData.instance}`);
+    // }
+  } else if (deviceData.isBeacon) {
+    // Beacon detectado pero MAC no coincide
+    console.log(`⚪ Beacon ignorado (MAC no válida): MAC=${deviceData.mac} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
   } else {
-    console.log(`Dispositivo BLE: MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Nombre=${deviceData.name || 'Sin nombre'}`);
+    // Dispositivo BLE normal
+    console.log(`📱 Dispositivo BLE: MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Nombre=${deviceData.name || 'Sin nombre'}`);
   }
 });
+
+// Función para procesar dispositivos acumulados (similar a tu lógica React Native)
+function processDetectedDevices() {
+  if (detectedDevicesCache.size === 0) return;
+
+  console.log(`📊 Procesando ${detectedDevicesCache.size} dispositivos acumulados...`);
+  
+  for (const [deviceId, device] of detectedDevicesCache) {
+    // Solo procesar beacons con MAC específica (igual que tu app React Native)
+    if (device.isBeacon && device.mac.startsWith(TARGET_MAC_PREFIX)) {
+      
+      getOpenEventByMac(device.mac, (err, currentEvent) => {
+        if (err) {
+          console.error('❌ Error consultando evento:', err);
+          return;
+        }
+
+        if (currentEvent) {
+          // Hay un evento abierto, verificar si actualizar o cerrar
+          const timeSinceLastUpdate = (Date.now() - new Date(currentEvent.f_final).getTime()) / 1000;
+          
+          if (device.distanceInM <= SCAN_RANGE || timeSinceLastUpdate < DEBOUNCE_TIME) {
+            // Actualizar evento existente
+            updateBeaconEvent(device, currentEvent.id);
+          } else {
+            // Cerrar evento por estar fuera de rango y tiempo
+            closeBeaconEvent(currentEvent.id, device.mac);
+          }
+        } else if (device.distanceInM <= SCAN_RANGE) {
+          // No hay evento abierto y está en rango, crear nuevo evento
+          saveBeaconEvent(device);
+        }
+        // Si no hay evento abierto y está fuera de rango, no hacer nada
+      });
+    }
+  }
+  
+  // Limpiar cache después de procesar
+  detectedDevicesCache.clear();
+  console.log('✅ Dispositivos procesados y cache limpiado');
+}
+
+// Procesar dispositivos cada segundo (como en tu app React Native)
+setInterval(processDetectedDevices, 1000);
 
 process.on('SIGINT', () => {
   console.log('\nFinalizando aplicación...');
