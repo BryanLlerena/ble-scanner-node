@@ -208,20 +208,15 @@ function markEventsAsSent(db, eventIds) {
 function convertEventToApiFormat(event) {
   // Parsear arrays RSSI (solo usar datos válidos para estadísticas)
   let validRssiArray = [];
-  let allRssiArray = [];
+  let discardArray = [];
   
   try {
-    // Datos válidos (dentro del rango) - para estadísticas
     if (event.rssi) {
-      const parsedRssi = JSON.parse(event.rssi);
-      validRssiArray = parsedRssi;
-      allRssiArray = allRssiArray.concat(parsedRssi);
+      validRssiArray = JSON.parse(event.rssi);
     }
     
-    // Datos descartados (fuera del rango) - solo para array completo
     if (event.rssi_discard) {
-      const parsedRssiDiscard = JSON.parse(event.rssi_discard);
-      allRssiArray = allRssiArray.concat(parsedRssiDiscard);
+      discardArray= JSON.parse(event.rssi_discard);
     }
   } catch (parseErr) {
     console.error('Error parseando RSSI:', parseErr);
@@ -233,16 +228,17 @@ function convertEventToApiFormat(event) {
   return {
     mac: event.beaconMac,
     unit: event.unit || "Test Truck",
-    f_inicio: event.f_inicio,
-    f_final: event.f_final,
+    f_inicio: new Date(event.f_inicio).getTime(),
+    f_final: new Date(event.f_final).getTime(),
     duration: stats.duration,
     rssi_min: stats.rssi_min,
     rssi_max: stats.rssi_max,
     rssi_mean: stats.rssi_mean,
     distance: stats.distance,
     uuid: event.uuid || generateUUID(),
-    connection: true, // Asumimos conexión disponible al enviar
-    rssi: allRssiArray // Array completo (válidos + descartados) para referencia
+    connection: "offline",
+    rssi: validRssiArray,
+    rssi_discard: discardArray
   };
 }
 
