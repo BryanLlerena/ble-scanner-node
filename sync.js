@@ -3,7 +3,6 @@ require('dotenv').config();
 const https = require('https');
 const http = require('http');
 const logger = require('./logger');
-const logger = require('./logger');
 
 // Configuración de la API desde variables de entorno
 const API_BASE_URL = process.env.API_BASE_URL || "http://172.236.110.18:3001/api/v1";
