@@ -439,7 +439,7 @@ function processDetectedDevices() {
 
         if (currentEvent) {
           const timeSinceLastUpdate = (Date.now() - new Date(currentEvent.f_final).getTime()) / 1000;
-          console.log("tiempo muerto", timeSinceLastUpdate, currentEvent.f_final);
+          console.log("tiempo muerto",currentEvent, timeSinceLastUpdate, currentEvent.f_final);
           if (timeSinceLastUpdate < DEBOUNCE_TIME) {
             // Dentro del tiempo de gracia - actualizar siempre
             console.log("tiempo muerto aceptado");
