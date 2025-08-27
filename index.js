@@ -445,9 +445,6 @@ function processDetectedDevices() {
             updateBeaconEvent(device, currentEvent.id);
           } else {
             closeBeaconEvent(currentEvent.id, device.mac);
-            if (device.distanceInM <= SCAN_RANGE) {
-              saveBeaconEvent(device);
-            }
           }
         } else if (device.distanceInM <= SCAN_RANGE) {
           saveBeaconEvent(device);
