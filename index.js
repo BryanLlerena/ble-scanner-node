@@ -15,6 +15,7 @@ const DB_FILE = process.env.DB_FILE || "beacons.db";
 const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || 30000;
 const INITIAL_SYNC_DELAY = parseInt(process.env.INITIAL_SYNC_DELAY) || 10000;
 const DEBUG_DEVICES = process.env.DEBUG_DEVICES === 'true';
+const BEACON_TIMEOUT = parseInt(process.env.BEACON_TIMEOUT) || 300; // 5 minutos por defecto
 
 logger.info('🔧 Configuración cargada:');
 logger.info(`   SCAN_RANGE: ${SCAN_RANGE}m`);
@@ -23,6 +24,7 @@ logger.info(`   TARGET_MAC_PREFIX: ${TARGET_MAC_PREFIX}`);
 logger.info(`   UNIT: ${UNIT}`);
 logger.info(`   SYNC_INTERVAL: ${SYNC_INTERVAL}ms`);
 logger.info(`   DB_FILE: ${DB_FILE}`);
+logger.info(`   BEACON_TIMEOUT: ${BEACON_TIMEOUT}s`);
 
 // Configuración de la base de datos
 const db = new sqlite3.Database(DB_FILE);
@@ -62,6 +64,9 @@ db.serialize(() => {
 
 // Cache temporal para dispositivos detectados
 const detectedDevicesCache = new Map();
+
+// Registro de última actividad de beacons para timeout
+const beaconLastSeen = new Map();
 
 // Generar UUID simple
 function generateUUID() {
@@ -258,6 +263,49 @@ function getOpenEventByMac(mac, callback) {
   );
 }
 
+// Función para cerrar eventos de beacons que han desaparecido (timeout)
+function closeExpiredBeaconEvents() {
+  const now = Date.now();
+  logger.debug('🕐 Verificando beacons expirados...');
+  
+  // Obtener todos los eventos abiertos
+  db.all(
+    `SELECT id, beaconMac, f_final FROM beacon_events WHERE eventState = 'open'`,
+    (err, openEvents) => {
+      if (err) {
+        logger.error('❌ Error obteniendo eventos abiertos:', err);
+        return;
+      }
+      
+      if (openEvents.length === 0) {
+        logger.debug('📋 No hay eventos abiertos para verificar');
+        return;
+      }
+      
+      logger.debug(`📋 Verificando ${openEvents.length} eventos abiertos...`);
+      
+      openEvents.forEach(event => {
+        const lastSeen = beaconLastSeen.get(event.beaconMac);
+        const lastFinalTime = new Date(event.f_final).getTime();
+        
+        // Si no hay registro de última vez visto, usar f_final del evento
+        const timeToCheck = lastSeen || lastFinalTime;
+        const timeSinceLastSeen = (now - timeToCheck) / 1000; // en segundos
+        
+        if (timeSinceLastSeen > BEACON_TIMEOUT) {
+          logger.warn(`⏰ Beacon ${event.beaconMac} perdido por ${Math.round(timeSinceLastSeen)}s - cerrando evento ${event.id}`);
+          closeBeaconEvent(event.id, event.beaconMac);
+          
+          // Limpiar del registro de última vez visto
+          beaconLastSeen.delete(event.beaconMac);
+        } else {
+          logger.debug(`✅ Beacon ${event.beaconMac} OK - última actividad hace ${Math.round(timeSinceLastSeen)}s`);
+        }
+      });
+    }
+  );
+}
+
 // Parsear iBeacon
 function parseIBeacon(manufacturerData) {
   if (!manufacturerData || manufacturerData.length < 25) return null;
@@ -367,6 +415,10 @@ noble.on('discover', peripheral => {
   // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
   if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
     detectedDevicesCache.set(deviceData.deviceId, deviceData);
+    
+    // Registrar última vez visto para control de timeout
+    beaconLastSeen.set(deviceData.mac, Date.now());
+    
     logger.info(`🎯 Beacon detectado: ${deviceData.name} ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
   }
 });
@@ -388,10 +440,14 @@ function processDetectedDevices() {
         if (currentEvent) {
           const timeSinceLastUpdate = (Date.now() - new Date(currentEvent.f_final).getTime()) / 1000;
           
-          if (device.distanceInM <= SCAN_RANGE || timeSinceLastUpdate < DEBOUNCE_TIME) {
+          if (timeSinceLastUpdate < DEBOUNCE_TIME) {
+            // Dentro del tiempo de gracia - actualizar siempre
             updateBeaconEvent(device, currentEvent.id);
           } else {
             closeBeaconEvent(currentEvent.id, device.mac);
+            if (device.distanceInM <= SCAN_RANGE) {
+              saveBeaconEvent(device);
+            }
           }
         } else if (device.distanceInM <= SCAN_RANGE) {
           saveBeaconEvent(device);
@@ -406,6 +462,9 @@ function processDetectedDevices() {
 }
 
 setInterval(processDetectedDevices, 1000);
+
+// Verificar beacons perdidos cada 30 segundos
+setInterval(closeExpiredBeaconEvents, 30000);
 
 // Sincronización con API usando configuración de .env
 setInterval(async () => {
