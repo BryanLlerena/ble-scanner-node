@@ -157,7 +157,7 @@ function getPendingEvents(db) {
   return new Promise((resolve, reject) => {
     db.all(`
       SELECT * FROM beacon_events 
-      WHERE eventState = 'closed' AND (syncStatus IS NULL OR syncStatus = 'pending')
+      WHERE syncStatus = 'pending'
       ORDER BY id ASC
     `, (err, rows) => {
       if (err) {
@@ -174,7 +174,7 @@ function getPendingUpdateEvents(db) {
   return new Promise((resolve, reject) => {
     db.all(`
       SELECT * FROM beacon_events 
-      WHERE eventState = 'closed' AND syncStatus = 'updated'
+      WHERE syncStatus = 'updated'
       ORDER BY id ASC
     `, (err, rows) => {
       if (err) {
@@ -206,23 +206,29 @@ function markEventsAsSent(db, eventIds) {
 
 // Convertir evento de BD a formato API
 function convertEventToApiFormat(event) {
-  // Parsear arrays RSSI
-  let rssiArray = [];
+  // Parsear arrays RSSI (solo usar datos válidos para estadísticas)
+  let validRssiArray = [];
+  let allRssiArray = [];
+  
   try {
+    // Datos válidos (dentro del rango) - para estadísticas
     if (event.rssi) {
       const parsedRssi = JSON.parse(event.rssi);
-      rssiArray = rssiArray.concat(parsedRssi);
+      validRssiArray = parsedRssi;
+      allRssiArray = allRssiArray.concat(parsedRssi);
     }
+    
+    // Datos descartados (fuera del rango) - solo para array completo
     if (event.rssi_discard) {
       const parsedRssiDiscard = JSON.parse(event.rssi_discard);
-      rssiArray = rssiArray.concat(parsedRssiDiscard);
+      allRssiArray = allRssiArray.concat(parsedRssiDiscard);
     }
   } catch (parseErr) {
     console.error('Error parseando RSSI:', parseErr);
   }
   
-  // Calcular estadísticas
-  const stats = calculateBeaconStats(rssiArray);
+  // Calcular estadísticas solo con datos válidos
+  const stats = calculateBeaconStats(validRssiArray);
   
   return {
     mac: event.beaconMac,
@@ -236,7 +242,7 @@ function convertEventToApiFormat(event) {
     distance: stats.distance,
     uuid: event.uuid || generateUUID(),
     connection: true, // Asumimos conexión disponible al enviar
-    rssi: rssiArray
+    rssi: allRssiArray // Array completo (válidos + descartados) para referencia
   };
 }
 

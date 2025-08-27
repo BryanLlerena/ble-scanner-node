@@ -103,8 +103,8 @@ function saveBeaconEvent(deviceData) {
     distance: deviceData.distanceInM
   };
   
-  const rssi = deviceData.distanceInM <= 10 ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
-  const rssi_discard = deviceData.distanceInM > 10 ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
+  const rssi = deviceData.distanceInM <= SCAN_RANGE ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
+  const rssi_discard = deviceData.distanceInM > SCAN_RANGE ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
   
   db.run(
     `INSERT INTO beacon_events (deviceId, beaconMac, name, rssi, rssi_discard, timestamp, type, uuid, major, minor, txPower, namespace, instance, distance, distanceInM, eventState, f_inicio, f_final, unit, manufacturerData, serviceData, syncStatus) 
@@ -133,8 +133,8 @@ function saveBeaconEvent(deviceData) {
     err => {
       if (err) console.error('❌ Error guardando evento:', err);
       else {
-        const rssiCount = deviceData.distanceInM <= 10 ? 1 : 0;
-        const rssiDiscardCount = deviceData.distanceInM > 10 ? 1 : 0;
+        const rssiCount = deviceData.distanceInM <= SCAN_RANGE ? 1 : 0;
+        const rssiDiscardCount = deviceData.distanceInM > SCAN_RANGE ? 1 : 0;
         console.log(`✅ Evento guardado para beacon ${deviceData.mac} | RSSI entries: ${rssiCount} | RSSI_discard entries: ${rssiDiscardCount}`);
       }
     }
@@ -177,7 +177,7 @@ function updateBeaconEvent(deviceData, eventId) {
       };
       
       // Agregar nueva entrada al array correspondiente según distancia
-      if (deviceData.distanceInM <= 10) {
+      if (deviceData.distanceInM <= SCAN_RANGE) {
         currentRssiArray.push(newRssiEntry);
       } else {
         currentRssiDiscardArray.push(newRssiEntry);
@@ -185,7 +185,11 @@ function updateBeaconEvent(deviceData, eventId) {
       
       // Actualizar evento con arrays actualizados
       db.run(
-        `UPDATE beacon_events SET rssi = ?, rssi_discard = ?, timestamp = ?, distance = ?, distanceInM = ?, f_final = ?, 
+        `UPDATE beacon_events SET rssi = ?, rssi_discard = ?, timestamp = ?, distance = ?, distanceInM = ?, 
+         f_final = CASE 
+           WHEN ? <= ? THEN ? 
+           ELSE f_final 
+         END,
          syncStatus = CASE 
            WHEN syncStatus = 'sent' THEN 'updated' 
            ELSE syncStatus 
@@ -196,13 +200,18 @@ function updateBeaconEvent(deviceData, eventId) {
           JSON.stringify(currentRssiDiscardArray), 
           timestamp, 
           deviceData.distance, 
-          deviceData.distanceInM, 
-          timestamp, 
+          deviceData.distanceInM,
+          deviceData.distanceInM, // Parámetro para comparación
+          SCAN_RANGE, // Rango válido
+          timestamp, // Nuevo f_final solo si está en rango
           eventId
         ],
         err => {
           if (err) console.error('❌ Error actualizando evento:', err);
-          else console.log(`✅ Evento ${eventId} actualizado | RSSI entries: ${currentRssiArray.length} | RSSI_discard entries: ${currentRssiDiscardArray.length}`);
+          else {
+            const finalUpdateMsg = deviceData.distanceInM <= SCAN_RANGE ? " | f_final actualizado" : " | f_final sin cambios (fuera de rango)";
+            console.log(`✅ Evento ${eventId} actualizado | RSSI entries: ${currentRssiArray.length} | RSSI_discard entries: ${currentRssiDiscardArray.length}${finalUpdateMsg}`);
+          }
         }
       );
     }
