@@ -2,6 +2,7 @@
 require('dotenv').config();
 const https = require('https');
 const http = require('http');
+const logger = require('./logger');
 
 // Configuración de la API desde variables de entorno
 const API_BASE_URL = process.env.API_BASE_URL || "http://172.236.110.18:3001/api/v1";
@@ -44,26 +45,26 @@ async function checkInternetConnection() {
 
   try {
     // Probar DNS lookup primero (más eficiente)
-    console.log('🌐 Verificando conexión DNS...');
+    logger.debug('🌐 Verificando conexión DNS...');
     const dnsResult = await dnsTest();
     if (dnsResult) {
-      console.log('✅ Conexión DNS exitosa');
+      logger.debug('✅ Conexión DNS exitosa');
       return true;
     }
 
     // Si falla, probar servidor DNS alternativo
-    console.log('🌐 Verificando DNS alternativo...');
+    logger.debug('🌐 Verificando DNS alternativo...');
     const dnsBackupResult = await dnsTestBackup();
     if (dnsBackupResult) {
-      console.log('✅ Conexión DNS alternativa exitosa');
+      logger.debug('✅ Conexión DNS alternativa exitosa');
       return true;
     }
 
-    console.log('❌ Sin conexión a internet detectada');
+    logger.warn('❌ Sin conexión a internet detectada');
     return false;
 
   } catch (error) {
-    console.log('❌ Error verificando conexión:', error.message);
+    logger.warn('❌ Error verificando conexión:', error.message);
     return false;
   }
 }
@@ -219,7 +220,7 @@ function convertEventToApiFormat(event) {
       discardArray= JSON.parse(event.rssi_discard);
     }
   } catch (parseErr) {
-    console.error('Error parseando RSSI:', parseErr);
+    logger.error('Error parseando RSSI:', parseErr);
   }
   
   // Calcular estadísticas solo con datos válidos
@@ -257,16 +258,16 @@ async function sendNewBeaconEvents(db) {
     const pendingEvents = await getPendingEvents(db);
     
     if (pendingEvents.length === 0) {
-      console.log('📡 No hay eventos pendientes para enviar');
+      logger.debug('📡 No hay eventos pendientes para enviar');
       return { success: true, sent: 0 };
     }
     
-    console.log(`📡 Enviando ${pendingEvents.length} eventos nuevos...`);
+    logger.info(`📡 Enviando ${pendingEvents.length} eventos nuevos...`);
     
     // Convertir a formato API
     const payload = pendingEvents.map((e) => convertEventToApiFormat(e));
-    console.log("payload", payload);
-        console.log("pending", payload);
+    // console.log("payload", payload);
+    // console.log("pending", payload);
 
 
     // Enviar a la API
@@ -280,15 +281,15 @@ async function sendNewBeaconEvents(db) {
       const eventIds = pendingEvents.map(event => event.id);
       await markEventsAsSent(db, eventIds);
       
-      console.log(`✅ ${pendingEvents.length} eventos enviados exitosamente`);
+      logger.info(`✅ ${pendingEvents.length} eventos enviados exitosamente`);
       return { success: true, sent: pendingEvents.length };
     } else {
-      console.error(`❌ Error enviando eventos: HTTP ${response.status}`);
+      logger.error(`❌ Error enviando eventos: HTTP ${response.status}`);
       return { success: false, error: `HTTP ${response.status}`, sent: 0 };
     }
     
   } catch (error) {
-    console.error('❌ Error en sendNewBeaconEvents:', error.message);
+    logger.error('❌ Error en sendNewBeaconEvents:', error.message);
     return { success: false, error: error.message, sent: 0 };
   }
 }
@@ -302,7 +303,7 @@ async function updateExistingBeaconEvents(db) {
       return { success: true, updated: 0 };
     }
     
-    console.log(`🔄 Actualizando ${updateEvents.length} eventos...`);
+    logger.info(`🔄 Actualizando ${updateEvents.length} eventos...`);
     
     let successCount = 0;
     
@@ -319,36 +320,36 @@ async function updateExistingBeaconEvents(db) {
         if (response.ok) {
           await markEventsAsSent(db, [event.id]);
           successCount++;
-          console.log(`✅ Evento ${event.uuid} actualizado`);
+          logger.info(`✅ Evento ${event.uuid} actualizado`);
         } else {
-          console.error(`❌ Error actualizando evento ${event.uuid}: HTTP ${response.status}`);
+          logger.error(`❌ Error actualizando evento ${event.uuid}: HTTP ${response.status}`);
         }
       } catch (updateError) {
-        console.error(`❌ Error actualizando evento ${event.uuid}:`, updateError.message);
+        logger.error(`❌ Error actualizando evento ${event.uuid}:`, updateError.message);
       }
     }
     
     return { success: true, updated: successCount };
     
   } catch (error) {
-    console.error('❌ Error en updateExistingBeaconEvents:', error.message);
+    logger.error('❌ Error en updateExistingBeaconEvents:', error.message);
     return { success: false, error: error.message, updated: 0 };
   }
 }
 
 // Función principal de sincronización
 async function syncBeaconEvents(db) {
-  console.log('🌐 Iniciando sincronización con API...');
+  logger.info('🌐 Iniciando sincronización con API...');
   
   // Verificar conexión a internet (opcional)
   if (!SKIP_INTERNET_CHECK) {
     const hasInternet = await checkInternetConnection();
     if (!hasInternet) {
-      console.log('❌ Sin conexión a internet, saltando sincronización');
+      logger.warn('❌ Sin conexión a internet, saltando sincronización');
       return { success: false, error: 'No internet connection' };
     }
   } else {
-    console.log('⚠️ Verificación de internet deshabilitada - intentando sincronización directa');
+    logger.warn('⚠️ Verificación de internet deshabilitada - intentando sincronización directa');
   }
   
   try {
@@ -361,9 +362,9 @@ async function syncBeaconEvents(db) {
     const totalProcessed = newResults.sent + updateResults.updated;
     
     if (totalProcessed > 0) {
-      console.log(`✅ Sincronización completada: ${newResults.sent} nuevos, ${updateResults.updated} actualizados`);
+      logger.info(`✅ Sincronización completada: ${newResults.sent} nuevos, ${updateResults.updated} actualizados`);
     } else {
-      console.log('📡 Sincronización completada: No hay datos pendientes');
+      logger.debug('📡 Sincronización completada: No hay datos pendientes');
     }
     
     return {
@@ -374,7 +375,7 @@ async function syncBeaconEvents(db) {
     };
     
   } catch (error) {
-    console.error('❌ Error en sincronización:', error.message);
+    logger.error('❌ Error en sincronización:', error.message);
     return { success: false, error: error.message };
   }
 }

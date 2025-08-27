@@ -4,6 +4,7 @@ const noble = require('@abandonware/noble');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { syncBeaconEvents } = require('./sync');
+const logger = require('./logger');
 
 // Configuración desde variables de entorno
 const SCAN_RANGE = parseFloat(process.env.SCAN_RANGE) || 10;
@@ -15,14 +16,13 @@ const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || 30000;
 const INITIAL_SYNC_DELAY = parseInt(process.env.INITIAL_SYNC_DELAY) || 10000;
 const DEBUG_DEVICES = process.env.DEBUG_DEVICES === 'true';
 
-console.log('🔧 Configuración cargada:');
-console.log(`   SCAN_RANGE: ${SCAN_RANGE}m`);
-console.log(`   DEBOUNCE_TIME: ${DEBOUNCE_TIME}s`);
-console.log(`   TARGET_MAC_PREFIX: ${TARGET_MAC_PREFIX}`);
-console.log(`   UNIT: ${UNIT}`);
-console.log(`   SYNC_INTERVAL: ${SYNC_INTERVAL}ms`);
-console.log(`   DB_FILE: ${DB_FILE}`);
-console.log('');
+logger.info('🔧 Configuración cargada:');
+logger.info(`   SCAN_RANGE: ${SCAN_RANGE}m`);
+logger.info(`   DEBOUNCE_TIME: ${DEBOUNCE_TIME}s`);
+logger.info(`   TARGET_MAC_PREFIX: ${TARGET_MAC_PREFIX}`);
+logger.info(`   UNIT: ${UNIT}`);
+logger.info(`   SYNC_INTERVAL: ${SYNC_INTERVAL}ms`);
+logger.info(`   DB_FILE: ${DB_FILE}`);
 
 // Configuración de la base de datos
 const db = new sqlite3.Database(DB_FILE);
@@ -95,7 +95,7 @@ function calculateDistanceInM(rssi, txPower = -59) {
 function saveBeaconEvent(deviceData) {
   const timestamp = new Date().toISOString();
   const eventUuid = generateUUID();
-  console.log(`💾 Guardando nuevo evento para beacon: ${deviceData.mac} (UUID: ${eventUuid})`);
+  logger.info(`💾 Guardando nuevo evento para beacon: ${deviceData.mac}`, { uuid: eventUuid });
   
   const rssiEntry = {
     rssi: deviceData.rssi || 0,
@@ -131,11 +131,12 @@ function saveBeaconEvent(deviceData) {
       deviceData.serviceData
     ],
     err => {
-      if (err) console.error('❌ Error guardando evento:', err);
-      else {
+      if (err) {
+        logger.error('❌ Error guardando evento:', err);
+      } else {
         const rssiCount = deviceData.distanceInM <= SCAN_RANGE ? 1 : 0;
         const rssiDiscardCount = deviceData.distanceInM > SCAN_RANGE ? 1 : 0;
-        console.log(`✅ Evento guardado para beacon ${deviceData.mac} | RSSI entries: ${rssiCount} | RSSI_discard entries: ${rssiDiscardCount}`);
+        logger.debug(`✅ Evento guardado para beacon ${deviceData.mac} | RSSI entries: ${rssiCount} | RSSI_discard entries: ${rssiDiscardCount}`);
       }
     }
   );
@@ -144,7 +145,7 @@ function saveBeaconEvent(deviceData) {
 // Función para actualizar evento existente
 function updateBeaconEvent(deviceData, eventId) {
   const timestamp = new Date().toISOString();
-  console.log(`🔄 Actualizando evento ${eventId} para beacon: ${deviceData.mac}`);
+  logger.debug(`🔄 Actualizando evento ${eventId} para beacon: ${deviceData.mac}`);
   
   // Primero obtener arrays actuales para agregar nueva entrada
   db.get(
@@ -152,7 +153,7 @@ function updateBeaconEvent(deviceData, eventId) {
     [eventId],
     (err, row) => {
       if (err) {
-        console.error('❌ Error obteniendo arrays actuales:', err);
+        logger.error('❌ Error obteniendo arrays actuales:', err);
         return;
       }
       
@@ -164,7 +165,7 @@ function updateBeaconEvent(deviceData, eventId) {
         currentRssiArray = row.rssi ? JSON.parse(row.rssi) : [];
         currentRssiDiscardArray = row.rssi_discard ? JSON.parse(row.rssi_discard) : [];
       } catch (parseErr) {
-        console.error('❌ Error parseando arrays JSON:', parseErr);
+        logger.error('❌ Error parseando arrays JSON:', parseErr);
         currentRssiArray = [];
         currentRssiDiscardArray = [];
       }
@@ -207,10 +208,11 @@ function updateBeaconEvent(deviceData, eventId) {
           eventId
         ],
         err => {
-          if (err) console.error('❌ Error actualizando evento:', err);
-          else {
+          if (err) {
+            logger.error('❌ Error actualizando evento:', err);
+          } else {
             const finalUpdateMsg = deviceData.distanceInM <= SCAN_RANGE ? " | f_final actualizado" : " | f_final sin cambios (fuera de rango)";
-            console.log(`✅ Evento ${eventId} actualizado | RSSI entries: ${currentRssiArray.length} | RSSI_discard entries: ${currentRssiDiscardArray.length}${finalUpdateMsg}`);
+            logger.debug(`✅ Evento ${eventId} actualizado | RSSI entries: ${currentRssiArray.length} | RSSI_discard entries: ${currentRssiDiscardArray.length}${finalUpdateMsg}`);
           }
         }
       );
@@ -221,7 +223,7 @@ function updateBeaconEvent(deviceData, eventId) {
 // Función para cerrar evento
 function closeBeaconEvent(eventId, deviceMac) {
   const timestamp = new Date().toISOString();
-  console.log(`🔒 Cerrando evento ${eventId} para beacon: ${deviceMac}`);
+  logger.info(`🔒 Cerrando evento ${eventId} para beacon: ${deviceMac}`);
   
   db.run(
     `UPDATE beacon_events SET eventState = 'closed', f_final = ?, syncStatus = CASE 
@@ -230,8 +232,11 @@ function closeBeaconEvent(eventId, deviceMac) {
      END WHERE id = ?`,
     [timestamp, eventId],
     err => {
-      if (err) console.error('❌ Error cerrando evento:', err);
-      else console.log(`✅ Evento ${eventId} cerrado`);
+      if (err) {
+        logger.error('❌ Error cerrando evento:', err);
+      } else {
+        logger.info(`✅ Evento ${eventId} cerrado`);
+      }
     }
   );
 }
@@ -241,7 +246,15 @@ function getOpenEventByMac(mac, callback) {
   db.get(
     `SELECT * FROM beacon_events WHERE beaconMac = ? AND eventState = 'open' ORDER BY id DESC LIMIT 1`,
     [mac],
-    callback
+    (err, row) => {
+      if (err) {
+        logger.error('❌ Error buscando evento abierto:', err);
+        callback(err, null);
+      } else {
+        logger.debug(`🔍 Evento abierto encontrado para ${mac}:`, row ? `ID ${row.id}` : 'ninguno');
+        callback(null, row);
+      }
+    }
   );
 }
 
@@ -326,10 +339,10 @@ function processDevice(peripheral) {
 noble.on('stateChange', state => {
   if (state === 'poweredOn') {
     noble.startScanning([], true);
-    console.log('Escaneo BLE iniciado...');
+    logger.info('📡 Escaneo BLE iniciado...');
   } else {
     noble.stopScanning();
-    console.log('Escaneo BLE detenido. Estado:', state);
+    logger.warn(`⏸️ Escaneo BLE detenido. Estado: ${state}`);
   }
 });
 
@@ -338,23 +351,23 @@ noble.on('discover', peripheral => {
   
   // Debug: Mostrar todos los dispositivos BLE detectados (controlado por variable de entorno)
   if (DEBUG_DEVICES && deviceData.distanceInM < 1) {
-    console.log(`🔍 DEBUG - Dispositivo detectado:`);
-    console.log(`   ID: ${peripheral.deviceId}`);
-    console.log(`   MAC: ${deviceData.mac}`);
-    console.log(`   Nombre: ${deviceData.name || 'Sin nombre'}`);
-    console.log(`   RSSI: ${deviceData.rssi}`);
-    console.log(`   Es Beacon: ${deviceData.isBeacon}`);
-    console.log(`   Tipo: ${deviceData.type}`);
-    console.log(`   ManufacturerData: ${deviceData.manufacturerData || 'Ninguno'}`);
-    console.log(`   ServiceData: ${deviceData.serviceData || 'Ninguno'}`);
-    console.log(`   Cumple MAC filter: ${deviceData.mac.startsWith(TARGET_MAC_PREFIX)}`);
-    console.log('   ---');
+    logger.debug(`🔍 DEBUG - Dispositivo detectado:`);
+    logger.debug(`   ID: ${peripheral.deviceId}`);
+    logger.debug(`   MAC: ${deviceData.mac}`);
+    logger.debug(`   Nombre: ${deviceData.name || 'Sin nombre'}`);
+    logger.debug(`   RSSI: ${deviceData.rssi}`);
+    logger.debug(`   Es Beacon: ${deviceData.isBeacon}`);
+    logger.debug(`   Tipo: ${deviceData.type}`);
+    logger.debug(`   ManufacturerData: ${deviceData.manufacturerData || 'Ninguno'}`);
+    logger.debug(`   ServiceData: ${deviceData.serviceData || 'Ninguno'}`);
+    logger.debug(`   Cumple MAC filter: ${deviceData.mac.startsWith(TARGET_MAC_PREFIX)}`);
+    logger.debug('   ---');
   }
   
   // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
   if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
     detectedDevicesCache.set(deviceData.deviceId, deviceData);
-    console.log(`🎯 Beacon detectado: ${deviceData.name} ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
+    logger.info(`🎯 Beacon detectado: ${deviceData.name} ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
   }
 });
 
@@ -362,13 +375,13 @@ noble.on('discover', peripheral => {
 function processDetectedDevices() {
   if (detectedDevicesCache.size === 0) return;
 
-  console.log(`📊 Procesando ${detectedDevicesCache.size} dispositivos acumulados...`);
+  logger.debug(`📊 Procesando ${detectedDevicesCache.size} dispositivos acumulados...`);
   
   for (const [deviceId, device] of detectedDevicesCache) {
     if (device.isBeacon && device.mac.startsWith(TARGET_MAC_PREFIX)) {
       getOpenEventByMac(device.mac, (err, currentEvent) => {
         if (err) {
-          console.error('❌ Error consultando evento:', err);
+          logger.error('❌ Error consultando evento:', err);
           return;
         }
 
@@ -389,7 +402,7 @@ function processDetectedDevices() {
   
   // Limpiar cache después de procesar
   detectedDevicesCache.clear();
-  console.log('✅ Dispositivos procesados y cache limpiado');
+  logger.debug('✅ Dispositivos procesados y cache limpiado');
 }
 
 setInterval(processDetectedDevices, 1000);
@@ -399,25 +412,28 @@ setInterval(async () => {
   try {
     await syncBeaconEvents(db);
   } catch (error) {
-    console.error('Error en sincronización automática:', error.message);
+    logger.error('❌ Error en sincronización automática:', error.message);
   }
 }, SYNC_INTERVAL);
 
 // Sincronización inicial usando configuración de .env
 setTimeout(async () => {
-  console.log('🚀 Iniciando primera sincronización...');
+  logger.info('🚀 Iniciando primera sincronización...');
   try {
     await syncBeaconEvents(db);
   } catch (error) {
-    console.error('Error en sincronización inicial:', error.message);
+    logger.error('❌ Error en sincronización inicial:', error.message);
   }
 }, INITIAL_SYNC_DELAY);
 
 process.on('SIGINT', () => {
-  console.log('\nFinalizando aplicación...');
+  logger.info('\n🛑 Finalizando aplicación...');
   db.close((err) => {
-    if (err) console.error('Error cerrando base de datos:', err);
-    else console.log('Base de datos cerrada correctamente.');
+    if (err) {
+      logger.error('❌ Error cerrando base de datos:', err);
+    } else {
+      logger.info('✅ Base de datos cerrada correctamente.');
+    }
   });
   noble.stopScanning();
   process.exit();
