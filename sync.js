@@ -268,9 +268,11 @@ async function sendNewBeaconEvents(db) {
     console.log(`📡 Enviando ${pendingEvents.length} eventos nuevos...`);
     
     // Convertir a formato API
-    const payload = pendingEvents.map(convertEventToApiFormat);
-    console.log("payload",pendingEvents)
-    
+    const payload = pendingEvents.map((e) => convertEventToApiFormat(e));
+    console.log("payload", payload);
+        console.log("pending", payload);
+
+
     // Enviar a la API
     const response = await makeHttpRequest(API_ENDPOINTS.BEACON_TRACK_MANY, {
       method: 'POST',
