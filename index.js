@@ -439,9 +439,10 @@ function processDetectedDevices() {
 
         if (currentEvent) {
           const timeSinceLastUpdate = (Date.now() - new Date(currentEvent.f_final).getTime()) / 1000;
-          
+          console.log("tiempo muerto", timeSinceLastUpdate);
           if (timeSinceLastUpdate < DEBOUNCE_TIME) {
             // Dentro del tiempo de gracia - actualizar siempre
+            console.log("tiempo muerto aceptado");
             updateBeaconEvent(device, currentEvent.id);
           } else {
             closeBeaconEvent(currentEvent.id, device.mac);
