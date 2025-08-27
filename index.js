@@ -113,7 +113,7 @@ function saveBeaconEvent(deviceData) {
   
   db.run(
     `INSERT INTO beacon_events (deviceId, beaconMac, name, rssi, rssi_discard, timestamp, type, uuid, major, minor, txPower, namespace, instance, distance, distanceInM, eventState, f_inicio, f_final, unit, manufacturerData, serviceData, syncStatus) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, NULL, ?, ?, ?, 'pending')`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, 'pending')`,
     [
       deviceData.deviceId,
       deviceData.mac,
@@ -131,7 +131,7 @@ function saveBeaconEvent(deviceData) {
       deviceData.distance,
       deviceData.distanceInM,
       timestamp,
-      UNIT,
+      timestamp,
       deviceData.manufacturerData,
       deviceData.serviceData
     ],
@@ -439,13 +439,14 @@ function processDetectedDevices() {
 
         if (currentEvent) {
           const timeSinceLastUpdate = (Date.now() - new Date(currentEvent.f_final).getTime()) / 1000;
-          console.log("tiempo muerto",currentEvent, timeSinceLastUpdate, currentEvent.f_final);
           if (timeSinceLastUpdate < DEBOUNCE_TIME) {
             // Dentro del tiempo de gracia - actualizar siempre
-            console.log("tiempo muerto aceptado");
             updateBeaconEvent(device, currentEvent.id);
           } else {
             closeBeaconEvent(currentEvent.id, device.mac);
+            if(device.distanceInM <= SCAN_RANGE){
+              saveBeaconEvent(device);
+            }
           }
         } else if (device.distanceInM <= SCAN_RANGE) {
           saveBeaconEvent(device);
