@@ -4,6 +4,9 @@ const https = require('https');
 const http = require('http');
 const logger = require('./logger');
 
+// Configuración desde variables de entorno
+const UNIT = process.env.UNIT || "TEST_UNIT";
+
 // Configuración de la API desde variables de entorno
 const API_BASE_URL = process.env.API_BASE_URL || "http://172.236.110.18:3001/api/v1";
 const API_ENDPOINTS = {
@@ -228,7 +231,7 @@ function convertEventToApiFormat(event) {
   
   return {
     mac: event.beaconMac,
-    unit: event.unit || "Test Truck",
+    unit: event.unit || UNIT,
     f_inicio: new Date(event.f_inicio).getTime(),
     f_final: new Date(event.f_final).getTime(),
     duration: stats.duration,

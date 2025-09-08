@@ -132,6 +132,7 @@ function saveBeaconEvent(deviceData) {
       deviceData.distanceInM,
       timestamp,
       timestamp,
+      UNIT,
       deviceData.manufacturerData,
       deviceData.serviceData
     ],
