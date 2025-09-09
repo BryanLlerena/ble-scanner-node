@@ -247,17 +247,25 @@ function closeBeaconEvent(eventId, deviceMac) {
   );
 }
 
-// Función para obtener evento abierto por MAC
+// Función para obtener evento abierto por MAC (solo últimos 5 minutos)
 function getOpenEventByMac(mac, callback) {
+  // Calcular timestamp de hace 2 minutos
+  const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+
   db.get(
-    `SELECT * FROM beacon_events WHERE beaconMac = ? AND eventState = 'open' ORDER BY id DESC LIMIT 1`,
-    [mac],
+    `SELECT * FROM beacon_events 
+     WHERE beaconMac = ? 
+     AND eventState = 'open' 
+     AND f_inicio >= ? 
+     ORDER BY id DESC 
+     LIMIT 1`,
+    [mac, fiveMinutesAgo],
     (err, row) => {
       if (err) {
         logger.error('❌ Error buscando evento abierto:', err);
         callback(err, null);
       } else {
-        logger.debug(`🔍 Evento abierto encontrado para ${mac}:`, row ? `ID ${row.id}` : 'ninguno');
+        logger.debug(`🔍 Evento abierto encontrado para ${mac} (últimos 2min):`, row ? `ID ${row.id}` : 'ninguno');
         callback(null, row);
       }
     }
