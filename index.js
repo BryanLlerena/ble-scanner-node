@@ -228,15 +228,14 @@ function updateBeaconEvent(deviceData, eventId) {
 
 // Función para cerrar evento
 function closeBeaconEvent(eventId, deviceMac) {
-  const timestamp = new Date().toISOString();
   logger.info(`🔒 Cerrando evento ${eventId} para beacon: ${deviceMac}`);
   
   db.run(
-    `UPDATE beacon_events SET eventState = 'closed', f_final = ?, syncStatus = CASE 
+    `UPDATE beacon_events SET eventState = 'closed', syncStatus = CASE 
        WHEN syncStatus = 'sent' THEN 'updated' 
        ELSE syncStatus 
      END WHERE id = ?`,
-    [timestamp, eventId],
+    [eventId],
     err => {
       if (err) {
         logger.error('❌ Error cerrando evento:', err);
@@ -249,8 +248,8 @@ function closeBeaconEvent(eventId, deviceMac) {
 
 // Función para obtener evento abierto por MAC (solo últimos 5 minutos)
 function getOpenEventByMac(mac, callback) {
-  // Calcular timestamp de hace 2 minutos
-  const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  // Calcular timestamp de hace 5 minutos
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
   db.get(
     `SELECT * FROM beacon_events 
