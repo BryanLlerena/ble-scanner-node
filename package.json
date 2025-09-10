@@ -9,7 +9,8 @@
     "delete": "node delete-data.js",
     "sync-status": "node sync-status.js",
     "sync-reset": "node sync-status.js --reset",
-    "web": "node web-viewer.js"
+    "web": "node web-viewer.js",
+    "update-units": "node update-units.js"
   },
   "dependencies": {
     "sqlite3": "^5.1.6",
