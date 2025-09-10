@@ -8,11 +8,16 @@
     "view": "node view-data.js",
     "delete": "node delete-data.js",
     "sync-status": "node sync-status.js",
-    "sync-reset": "node sync-status.js --reset"
+    "sync-reset": "node sync-status.js --reset",
+    "web": "node web-viewer.js"
   },
   "dependencies": {
-    "@abandonware/noble": "^1.9.2-15",
     "sqlite3": "^5.1.6",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "optionalDependencies": {
+    "@abandonware/noble": "^1.9.2-15"
   }
 }

@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLE Scanner - Visualizador de Datos</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin-bottom: 10px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .filters {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .filters h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .filter-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .filter-group label {
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .filter-group input,
+        .filter-group select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .filter-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        .btn-primary {
+            background-color: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #5a6fd8;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+
+        .data-table {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .table-header {
+            background-color: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-open {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .status-closed {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .status-sent {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-updated {
+            background-color: #e2e3e5;
+            color: #383d41;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .page-info {
+            color: #666;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            margin: 5% auto;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 10px;
+        }
+
+        .close {
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .detail-item {
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .detail-label {
+            font-weight: bold;
+            color: #495057;
+        }
+
+        .detail-value {
+            margin-top: 5px;
+            word-break: break-all;
+        }
+
+        .rssi-section {
+            margin-top: 20px;
+        }
+
+        .rssi-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .rssi-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+        }
+
+        .rssi-item {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .filter-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            table {
+                font-size: 12px;
+            }
+            
+            th, td {
+                padding: 8px 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 BLE Scanner - Visualizador de Datos</h1>
+            <p>Sistema de monitoreo de beacons en tiempo real</p>
+        </div>
+
+        <!-- Estadísticas -->
+        <div class="stats-grid" id="statsGrid">
+            <!-- Se llenan dinámicamente -->
+        </div>
+
+        <!-- Filtros -->
+        <div class="filters">
+            <h3>🔍 Filtros</h3>
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label for="unitFilter">Unidad</label>
+                    <select id="unitFilter">
+                        <option value="">Todas las unidades</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="beaconMacFilter">MAC del Beacon</label>
+                    <input type="text" id="beaconMacFilter" placeholder="bc:57:29...">
+                </div>
+                <div class="filter-group">
+                    <label for="eventStateFilter">Estado del Evento</label>
+                    <select id="eventStateFilter">
+                        <option value="">Todos los estados</option>
+                        <option value="open">Abierto</option>
+                        <option value="closed">Cerrado</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="syncStatusFilter">Estado de Sincronización</label>
+                    <select id="syncStatusFilter">
+                        <option value="">Todos los estados</option>
+                        <option value="pending">Pendiente</option>
+                        <option value="sent">Enviado</option>
+                        <option value="updated">Actualizado</option>
+                    </select>
+                </div>
+            </div>
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label for="startDateFilter">Fecha Inicio</label>
+                    <input type="datetime-local" id="startDateFilter">
+                </div>
+                <div class="filter-group">
+                    <label for="endDateFilter">Fecha Fin</label>
+                    <input type="datetime-local" id="endDateFilter">
+                </div>
+                <div class="filter-group">
+                    <label for="limitFilter">Límite de resultados</label>
+                    <select id="limitFilter">
+                        <option value="50">50</option>
+                        <option value="100" selected>100</option>
+                        <option value="200">200</option>
+                        <option value="500">500</option>
+                    </select>
+                </div>
+            </div>
+            <div class="filter-buttons">
+                <button class="btn btn-primary" onclick="loadEvents()">🔍 Buscar</button>
+                <button class="btn btn-secondary" onclick="clearFilters()">🗑️ Limpiar Filtros</button>
+                <button class="btn btn-secondary" onclick="loadStats(); loadEvents()">🔄 Actualizar</button>
+            </div>
+        </div>
+
+        <!-- Tabla de datos -->
+        <div class="data-table">
+            <div class="table-header">
+                <h3>📊 Eventos de Beacons</h3>
+                <div class="table-controls">
+                    <span id="recordCount" class="page-info">Cargando...</span>
+                </div>
+            </div>
+            <div id="tableContainer">
+                <div class="loading">Cargando datos...</div>
+            </div>
+        </div>
+
+        <!-- Paginación -->
+        <div class="pagination" id="pagination" style="display: none;">
+            <button class="btn btn-secondary" onclick="prevPage()">⬅️ Anterior</button>
+            <span id="pageInfo" class="page-info"></span>
+            <button class="btn btn-secondary" onclick="nextPage()">Siguiente ➡️</button>
+        </div>
+    </div>
+
+    <!-- Modal para detalles -->
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📋 Detalles del Evento</h3>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div id="eventDetails">
+                <!-- Se llena dinámicamente -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 0;
+        let currentLimit = 100;
+        let totalRecords = 0;
+
+        // Cargar estadísticas al inicio
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStats();
+            loadEvents();
+        });
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const stats = await response.json();
+                
+                const statsGrid = document.getElementById('statsGrid');
+                statsGrid.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-number">${stats.totalEvents}</div>
+                        <div class="stat-label">Total Eventos</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${stats.openEvents}</div>
+                        <div class="stat-label">Eventos Abiertos</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${stats.closedEvents}</div>
+                        <div class="stat-label">Eventos Cerrados</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${stats.uniqueBeacons}</div>
+                        <div class="stat-label">Beacons Únicos</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${stats.pendingSync}</div>
+                        <div class="stat-label">Pendientes Sync</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${stats.sentSync}</div>
+                        <div class="stat-label">Enviados</div>
+                    </div>
+                `;
+
+                // Llenar filtro de unidades
+                const unitFilter = document.getElementById('unitFilter');
+                unitFilter.innerHTML = '<option value="">Todas las unidades</option>';
+                stats.units.forEach(unit => {
+                    unitFilter.innerHTML += `<option value="${unit}">${unit}</option>`;
+                });
+
+            } catch (error) {
+                console.error('Error cargando estadísticas:', error);
+            }
+        }
+
+        async function loadEvents() {
+            const container = document.getElementById('tableContainer');
+            container.innerHTML = '<div class="loading">Cargando datos...</div>';
+
+            try {
+                const params = new URLSearchParams();
+                
+                // Obtener filtros
+                const unit = document.getElementById('unitFilter').value;
+                const beaconMac = document.getElementById('beaconMacFilter').value;
+                const eventState = document.getElementById('eventStateFilter').value;
+                const syncStatus = document.getElementById('syncStatusFilter').value;
+                const startDate = document.getElementById('startDateFilter').value;
+                const endDate = document.getElementById('endDateFilter').value;
+                const limit = document.getElementById('limitFilter').value;
+                
+                if (unit) params.append('unit', unit);
+                if (beaconMac) params.append('beaconMac', beaconMac);
+                if (eventState) params.append('eventState', eventState);
+                if (syncStatus) params.append('syncStatus', syncStatus);
+                if (startDate) params.append('startDate', startDate);
+                if (endDate) params.append('endDate', endDate);
+                
+                params.append('limit', limit);
+                params.append('offset', currentPage * limit);
+
+                const response = await fetch(`/api/events?${params.toString()}`);
+                const events = await response.json();
+
+                currentLimit = parseInt(limit);
+                totalRecords = events.length;
+
+                if (events.length === 0) {
+                    container.innerHTML = '<div class="loading">No se encontraron eventos con los filtros aplicados</div>';
+                    document.getElementById('recordCount').textContent = 'No hay registros';
+                    return;
+                }
+
+                // Crear tabla
+                const table = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>MAC Beacon</th>
+                                <th>Unidad</th>
+                                <th>Estado</th>
+                                <th>Sync</th>
+                                <th>F. Inicio</th>
+                                <th>F. Final</th>
+                                <th>Duración</th>
+                                <th>RSSI</th>
+                                <th>Distancia</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${events.map(event => `
+                                <tr>
+                                    <td>${event.id}</td>
+                                    <td><code>${event.beaconMac}</code></td>
+                                    <td>${event.unit || 'N/A'}</td>
+                                    <td><span class="status-badge status-${event.eventState}">${event.eventState}</span></td>
+                                    <td><span class="status-badge status-${event.syncStatus}">${event.syncStatus}</span></td>
+                                    <td>${formatDateTime(event.f_inicio)}</td>
+                                    <td>${formatDateTime(event.f_final)}</td>
+                                    <td>${formatDuration(event.duration)}</td>
+                                    <td>${event.rssiCount}/${event.rssiDiscardCount}</td>
+                                    <td>${event.distanceInM ? event.distanceInM.toFixed(2) + 'm' : 'N/A'}</td>
+                                    <td><button class="btn btn-primary" onclick="showEventDetails(${event.id})">Ver</button></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+                container.innerHTML = table;
+                document.getElementById('recordCount').textContent = `${events.length} registros encontrados`;
+
+                // Mostrar paginación si hay registros
+                if (events.length >= currentLimit) {
+                    document.getElementById('pagination').style.display = 'flex';
+                    updatePaginationInfo();
+                } else {
+                    document.getElementById('pagination').style.display = 'none';
+                }
+
+            } catch (error) {
+                console.error('Error cargando eventos:', error);
+                container.innerHTML = '<div class="loading">Error cargando los datos</div>';
+            }
+        }
+
+        async function showEventDetails(eventId) {
+            try {
+                const response = await fetch(`/api/events/${eventId}`);
+                const event = await response.json();
+
+                const detailsContainer = document.getElementById('eventDetails');
+                detailsContainer.innerHTML = `
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">ID del Evento</div>
+                            <div class="detail-value">${event.id}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">MAC del Beacon</div>
+                            <div class="detail-value"><code>${event.beaconMac}</code></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Unidad</div>
+                            <div class="detail-value">${event.unit || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Nombre</div>
+                            <div class="detail-value">${event.name || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Tipo</div>
+                            <div class="detail-value">${event.type}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Estado del Evento</div>
+                            <div class="detail-value"><span class="status-badge status-${event.eventState}">${event.eventState}</span></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Estado de Sync</div>
+                            <div class="detail-value"><span class="status-badge status-${event.syncStatus}">${event.syncStatus}</span></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Fecha Inicio</div>
+                            <div class="detail-value">${formatDateTime(event.f_inicio)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Fecha Final</div>
+                            <div class="detail-value">${formatDateTime(event.f_final)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Duración</div>
+                            <div class="detail-value">${formatDuration(event.duration)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Distancia</div>
+                            <div class="detail-value">${event.distanceInM ? event.distanceInM.toFixed(2) + 'm' : 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">UUID</div>
+                            <div class="detail-value">${event.uuid || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Major/Minor</div>
+                            <div class="detail-value">${event.major || 'N/A'} / ${event.minor || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">TX Power</div>
+                            <div class="detail-value">${event.txPower || 'N/A'}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="rssi-section">
+                        <h4>📊 Datos RSSI</h4>
+                        <div class="rssi-grid">
+                            <div>
+                                <h5>✅ RSSI Válidos (${event.rssiArray ? event.rssiArray.length : 0})</h5>
+                                <div class="rssi-list">
+                                    ${event.rssiArray && event.rssiArray.length > 0 ? 
+                                        event.rssiArray.map(item => `
+                                            <div class="rssi-item">
+                                                RSSI: ${item.rssi} | Distancia: ${item.distance?.toFixed(2)}m | ${formatDateTime(new Date(item.datetime).toISOString())}
+                                            </div>
+                                        `).join('') : 
+                                        '<div class="rssi-item">No hay datos RSSI válidos</div>'
+                                    }
+                                </div>
+                            </div>
+                            <div>
+                                <h5>❌ RSSI Descartados (${event.rssiDiscardArray ? event.rssiDiscardArray.length : 0})</h5>
+                                <div class="rssi-list">
+                                    ${event.rssiDiscardArray && event.rssiDiscardArray.length > 0 ? 
+                                        event.rssiDiscardArray.map(item => `
+                                            <div class="rssi-item">
+                                                RSSI: ${item.rssi} | Distancia: ${item.distance?.toFixed(2)}m | ${formatDateTime(new Date(item.datetime).toISOString())}
+                                            </div>
+                                        `).join('') : 
+                                        '<div class="rssi-item">No hay datos RSSI descartados</div>'
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('detailModal').style.display = 'block';
+
+            } catch (error) {
+                console.error('Error cargando detalles del evento:', error);
+                alert('Error cargando los detalles del evento');
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').style.display = 'none';
+        }
+
+        function clearFilters() {
+            document.getElementById('unitFilter').value = '';
+            document.getElementById('beaconMacFilter').value = '';
+            document.getElementById('eventStateFilter').value = '';
+            document.getElementById('syncStatusFilter').value = '';
+            document.getElementById('startDateFilter').value = '';
+            document.getElementById('endDateFilter').value = '';
+            document.getElementById('limitFilter').value = '100';
+            currentPage = 0;
+            loadEvents();
+        }
+
+        function prevPage() {
+            if (currentPage > 0) {
+                currentPage--;
+                loadEvents();
+            }
+        }
+
+        function nextPage() {
+            currentPage++;
+            loadEvents();
+        }
+
+        function updatePaginationInfo() {
+            const startRecord = (currentPage * currentLimit) + 1;
+            const endRecord = Math.min((currentPage + 1) * currentLimit, startRecord + totalRecords - 1);
+            document.getElementById('pageInfo').textContent = `Página ${currentPage + 1} (${startRecord}-${endRecord})`;
+        }
+
+        function formatDateTime(dateString) {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            return date.toLocaleString('es-ES', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds || seconds === 0) return '0s';
+            
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${secs}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
+
+        // Cerrar modal al hacer clic fuera
+        window.onclick = function(event) {
+            const modal = document.getElementById('detailModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+    </script>
+</body>
+</html>
