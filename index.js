@@ -258,7 +258,7 @@ function getOpenEventByMac(mac, callback) {
      AND f_inicio >= ? 
      ORDER BY id DESC 
      LIMIT 1`,
-    [mac, fiveMinutesAgo],
+    [mac, twelveHoursAgo],
     (err, row) => {
       if (err) {
         logger.error('❌ Error buscando evento abierto:', err);
