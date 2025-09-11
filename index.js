@@ -246,10 +246,10 @@ function closeBeaconEvent(eventId, deviceMac) {
   );
 }
 
-// Función para obtener evento abierto por MAC (solo últimos 5 minutos)
+// Función para obtener evento abierto por MAC (solo últimos 12 horas)
 function getOpenEventByMac(mac, callback) {
-  // Calcular timestamp de hace 5 minutos
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  // Calcular timestamp de hace 12 horas
+  const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
 
   db.get(
     `SELECT * FROM beacon_events 
