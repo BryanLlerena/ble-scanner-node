@@ -3,6 +3,7 @@ require('dotenv').config();
 const noble = require('@abandonware/noble');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 const { syncBeaconEvents } = require('./sync');
 const logger = require('./logger');
 
@@ -68,13 +69,9 @@ const detectedDevicesCache = new Map();
 // Registro de última actividad de beacons para timeout
 const beaconLastSeen = new Map();
 
-// Generar UUID simple
+// Generar UUID usando librería uuid + nombre de unidad
 function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c == 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
+  return `${uuidv4()}-${UNIT}`;
 }
 
 // Calcular distancia basada en RSSI
