@@ -8,15 +8,15 @@ const { syncBeaconEvents } = require('./sync');
 const logger = require('./logger');
 
 // Configuración desde variables de entorno
-const SCAN_RANGE = parseFloat(process.env.SCAN_RANGE) || 10;
-const DEBOUNCE_TIME = parseInt(process.env.DEBOUNCE_TIME) || 60;
+const SCAN_RANGE = parseFloat(process.env.SCAN_RANGE) || 80;
+const DEBOUNCE_TIME = parseInt(process.env.DEBOUNCE_TIME) || 300;
 const TARGET_MAC_PREFIX = process.env.TARGET_MAC_PREFIX || "bc:57:29";
 const UNIT = process.env.UNIT || "TEST_UNIT";
 const DB_FILE = process.env.DB_FILE || "beacons.db";
 const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || 30000;
 const INITIAL_SYNC_DELAY = parseInt(process.env.INITIAL_SYNC_DELAY) || 10000;
 const DEBUG_DEVICES = process.env.DEBUG_DEVICES === 'true';
-const BEACON_TIMEOUT = parseInt(process.env.BEACON_TIMEOUT) || 300; // 5 minutos por defecto
+const BEACON_TIMEOUT = parseInt(process.env.BEACON_TIMEOUT) || 3000; // 5 minutos por defecto
 
 logger.info('🔧 Configuración cargada:');
 logger.info(`   SCAN_RANGE: ${SCAN_RANGE}m`);
@@ -65,9 +65,6 @@ db.serialize(() => {
 
 // Cache temporal para dispositivos detectados
 const detectedDevicesCache = new Map();
-
-// Registro de última actividad de beacons para timeout
-const beaconLastSeen = new Map();
 
 // Generar UUID usando librería uuid + nombre de unidad
 function generateUUID() {
@@ -290,19 +287,15 @@ function closeExpiredBeaconEvents() {
       logger.debug(`📋 Verificando ${openEvents.length} eventos abiertos...`);
       
       openEvents.forEach(event => {
-        const lastSeen = beaconLastSeen.get(event.beaconMac);
         const lastFinalTime = new Date(event.f_final).getTime();
         
         // Si no hay registro de última vez visto, usar f_final del evento
-        const timeToCheck = lastSeen || lastFinalTime;
+        const timeToCheck = lastFinalTime;
         const timeSinceLastSeen = (now - timeToCheck) / 1000; // en segundos
         
         if (timeSinceLastSeen > BEACON_TIMEOUT) {
           logger.warn(`⏰ Beacon ${event.beaconMac} perdido por ${Math.round(timeSinceLastSeen)}s - cerrando evento ${event.id}`);
           closeBeaconEvent(event.id, event.beaconMac);
-          
-          // Limpiar del registro de última vez visto
-          beaconLastSeen.delete(event.beaconMac);
         } else {
           logger.debug(`✅ Beacon ${event.beaconMac} OK - última actividad hace ${Math.round(timeSinceLastSeen)}s`);
         }
@@ -403,7 +396,7 @@ noble.on('discover', peripheral => {
   const deviceData = processDevice(peripheral);
   
   // Debug: Mostrar todos los dispositivos BLE detectados (controlado por variable de entorno)
-  if (DEBUG_DEVICES && deviceData.distanceInM < 1) {
+  if (DEBUG_DEVICES) {
     logger.debug(`🔍 DEBUG - Dispositivo detectado:`);
     logger.debug(`   ID: ${peripheral.deviceId}`);
     logger.debug(`   MAC: ${deviceData.mac}`);
@@ -420,9 +413,6 @@ noble.on('discover', peripheral => {
   // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
   if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
     detectedDevicesCache.set(deviceData.deviceId, deviceData);
-    
-    // Registrar última vez visto para control de timeout
-    beaconLastSeen.set(deviceData.mac, Date.now());
     
     logger.info(`🎯 Beacon detectado: ${deviceData.name} ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
   }
