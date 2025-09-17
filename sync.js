@@ -3,6 +3,10 @@ require('dotenv').config();
 const https = require('https');
 const http = require('http');
 const logger = require('./logger');
+const wifi = require('node-wifi');
+
+// Inicializar módulo wifi
+wifi.init({ iface: null });
 
 // Configuración desde variables de entorno
 const UNIT = process.env.UNIT || "TEST_UNIT";
@@ -23,6 +27,22 @@ const DEFAULT_HEADERS = {
   'Content-Type': 'application/json',
   'User-Agent': 'BeaconApp/1.0 (NodeJS)'
 };
+
+function getWifiInfo() {
+  return new Promise((resolve, reject) => {
+    wifi.getCurrentConnections((err, currentConnections) => {
+      if (err) {
+        return reject(err);
+      }
+      if (currentConnections.length > 0) {
+        const { ssid, mac } = currentConnections[0];
+        resolve({ ssid, bssid: mac });
+      } else {
+        resolve({ ssid: null, bssid: null });
+      }
+    });
+  });
+}
 
 // Función para verificar conexión a internet usando DNS lookup
 async function checkInternetConnection() {
@@ -209,7 +229,7 @@ function markEventsAsSent(db, eventIds) {
 }
 
 // Convertir evento de BD a formato API
-function convertEventToApiFormat(event) {
+function convertEventToApiFormat(event, wap, isUpdate = false) {
   // Parsear arrays RSSI (solo usar datos válidos para estadísticas)
   let validRssiArray = [];
   let discardArray = [];
@@ -229,21 +249,41 @@ function convertEventToApiFormat(event) {
   // Calcular estadísticas solo con datos válidos
   const stats = calculateBeaconStats(validRssiArray);
   
-  return {
-    mac: event.beaconMac,
-    unit: event.unit || UNIT,
-    f_inicio: new Date(event.f_inicio).getTime(),
-    f_final: new Date(event.f_final).getTime(),
-    duration: stats.duration,
-    rssi_min: stats.rssi_min,
-    rssi_max: stats.rssi_max,
-    rssi_mean: stats.rssi_mean,
-    distance: stats.distance,
-    uuid: event.uuid || generateUUID(),
-    connection: "offline",
-    rssi: validRssiArray,
-    rssi_discard: discardArray
-  };
+  if(isUpdate){
+    return {
+      mac: event.beaconMac,
+      unit: event.unit || UNIT,
+      f_inicio: new Date(event.f_inicio).getTime(),
+      f_final: new Date(event.f_final).getTime(),
+      duration: stats.duration,
+      rssi_min: stats.rssi_min,
+      rssi_max: stats.rssi_max,
+      rssi_mean: stats.rssi_mean,
+      distance: stats.distance,
+      uuid: event.uuid || generateUUID(),
+      connection: "offline",
+      rssi: validRssiArray,
+      rssi_discard: discardArray,
+    };
+  } else {
+    return {
+      mac: event.beaconMac,
+      unit: event.unit || UNIT,
+      f_inicio: new Date(event.f_inicio).getTime(),
+      f_final: new Date(event.f_final).getTime(),
+      duration: stats.duration,
+      rssi_min: stats.rssi_min,
+      rssi_max: stats.rssi_max,
+      rssi_mean: stats.rssi_mean,
+      distance: stats.distance,
+      uuid: event.uuid || generateUUID(),
+      connection: "offline",
+      rssi: validRssiArray,
+      rssi_discard: discardArray,
+      wap: wap.wap || "",
+      wap_mac: wap.wap_mac || ""
+    };
+  }
 }
 
 // Generar UUID simple
@@ -257,9 +297,15 @@ function generateUUID() {
 
 // Enviar eventos nuevos (POST /many)
 async function sendNewBeaconEvents(db) {
+  let wifiInfo = { wap: "", wap_mac: "" };
   try {
     const pendingEvents = await getPendingEvents(db);
-    
+
+    getWifiInfo().then(info => {
+      wifiInfo.wap = info.ssid;
+      wifiInfo.wap_mac = info.bssid;
+    }).catch(console.error);
+
     if (pendingEvents.length === 0) {
       logger.debug('📡 No hay eventos pendientes para enviar');
       return { success: true, sent: 0 };
@@ -268,10 +314,7 @@ async function sendNewBeaconEvents(db) {
     logger.info(`📡 Enviando ${pendingEvents.length} eventos nuevos...`);
     
     // Convertir a formato API
-    const payload = pendingEvents.map((e) => convertEventToApiFormat(e));
-    // console.log("payload", payload);
-    // console.log("pending", payload);
-
+    const payload = pendingEvents.map((e) => convertEventToApiFormat(e, wifiInfo, false));
 
     // Enviar a la API
     const response = await makeHttpRequest(API_ENDPOINTS.BEACON_TRACK_MANY, {
@@ -299,6 +342,7 @@ async function sendNewBeaconEvents(db) {
 
 // Actualizar eventos existentes (PUT /:uuid)
 async function updateExistingBeaconEvents(db) {
+  let wifiInfo = { wap: "", wap_mac: "" };
   try {
     const updateEvents = await getPendingUpdateEvents(db);
     
@@ -312,7 +356,7 @@ async function updateExistingBeaconEvents(db) {
     
     for (const event of updateEvents) {
       try {
-        const payload = convertEventToApiFormat(event);
+        const payload = convertEventToApiFormat(event, wifiInfo, true);
         const updateUrl = `${API_ENDPOINTS.BEACON_TRACK_UPDATE}/${event.uuid}`;
         
         const response = await makeHttpRequest(updateUrl, {
