@@ -1,13 +1,3 @@
-// Endpoint para borrar todos los registros de la tabla wifi_status
-app.delete('/api/wifi/history', (req, res) => {
-  db.run('DELETE FROM wifi_status', (err) => {
-    if (err) {
-      res.status(500).json({ error: 'Error al borrar la base de datos' });
-    } else {
-      res.json({ success: true });
-    }
-  });
-});
 require('dotenv').config();
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
@@ -60,7 +50,16 @@ async function getWifiStatus() {
   });
 }
 
-
+// Endpoint para borrar todos los registros de la tabla wifi_status
+app.delete('/api/wifi/history', (req, res) => {
+  db.run('DELETE FROM wifi_status', (err) => {
+    if (err) {
+      res.status(500).json({ error: 'Error al borrar la base de datos' });
+    } else {
+      res.json({ success: true });
+    }
+  });
+});
 
 app.get('/api/wifi/status', async (req, res) => {
   const status = await getWifiStatus();
