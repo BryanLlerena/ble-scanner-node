@@ -95,14 +95,42 @@ function checkInternetConnection() {
 
 
 // Guardar estado cada 10 segundos solo si está conectado a WiFi, y guardar si hay o no internet
+
+let lastStatus = null;
 setInterval(async () => {
   const status = await getWifiStatus();
   if (status.status === 'connected') {
     const online = await checkInternetConnection();
-    db.run(
-      `INSERT INTO wifi_status (timestamp, ssid, bssid, status, internet) VALUES (?, ?, ?, ?, ?)`,
-      [status.timestamp, status.ssid, status.bssid, status.status, online ? 1 : 0]
-    );
+    // Consultar el último registro
+    db.get('SELECT * FROM wifi_status ORDER BY timestamp DESC LIMIT 1', (err, row) => {
+      let shouldSave = false;
+      if (!row) {
+        shouldSave = true; // No hay registros previos
+      } else if (
+        row.status !== status.status ||
+        row.ssid !== status.ssid ||
+        row.bssid !== status.bssid ||
+        row.internet !== (online ? 1 : 0)
+      ) {
+        shouldSave = true;
+      }
+      if (shouldSave) {
+        db.run(
+          `INSERT INTO wifi_status (timestamp, ssid, bssid, status, internet) VALUES (?, ?, ?, ?, ?)`,
+          [status.timestamp, status.ssid, status.bssid, status.status, online ? 1 : 0]
+        );
+      }
+    });
+  } else {
+    // Si se desconecta, guardar solo si el último registro no era desconectado
+    db.get('SELECT * FROM wifi_status ORDER BY timestamp DESC LIMIT 1', (err, row) => {
+      if (!row || row.status !== 'disconnected') {
+        db.run(
+          `INSERT INTO wifi_status (timestamp, ssid, bssid, status, internet) VALUES (?, ?, ?, ?, ?)`,
+          [status.timestamp, status.ssid, status.bssid, status.status, 0]
+        );
+      }
+    });
   }
 }, 10 * 1000);
 
