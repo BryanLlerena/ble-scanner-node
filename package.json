@@ -11,7 +11,7 @@
     "sync-reset": "node sync-status.js --reset",
     "web": "node web-viewer.js",
     "update-units": "node update-units.js",
-  "view-wifi": "node view-wifi.js",
+    "view-wifi": "node view-wifi.js",
     "wifi-status": "node wifi-status.js",
     "regenerate-uuids": "node regenerate-uuids.js"
   },
