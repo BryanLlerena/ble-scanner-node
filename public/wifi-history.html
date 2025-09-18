@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Historial WiFi</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; background: #f7f7f7; }
+    h1 { color: #333; }
+    table { border-collapse: collapse; width: 100%; background: #fff; }
+    th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+    th { background: #eee; }
+    tr:nth-child(even) { background: #f2f2f2; }
+    .ok { color: green; font-weight: bold; }
+    .fail { color: red; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Historial de Conectividad WiFi</h1>
+  <div style="margin-bottom:1em;">
+    <label>Desde: <input type="datetime-local" id="from"></label>
+    <label>Hasta: <input type="datetime-local" id="to"></label>
+    <button onclick="loadWifiHistory()">Filtrar</button>
+    <button onclick="resetFilters()">Limpiar</button>
+  </div>
+  <table id="wifi-table">
+    <thead>
+      <tr>
+        <th>Fecha/Hora</th>
+        <th>SSID</th>
+        <th>BSSID</th>
+        <th>Estado</th>
+        <th>Internet</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <script>
+    let intervalId;
+    function getDateTimeValue(id) {
+      const val = document.getElementById(id).value;
+      return val ? new Date(val).toISOString() : '';
+    }
+    async function loadWifiHistory() {
+      const from = getDateTimeValue('from');
+      const to = getDateTimeValue('to');
+      let url = '/api/wifi/history';
+      const params = [];
+      if (from) params.push('from=' + encodeURIComponent(from));
+      if (to) params.push('to=' + encodeURIComponent(to));
+      if (params.length) url += '?' + params.join('&');
+      const res = await fetch(url);
+      const data = await res.json();
+      const tbody = document.querySelector('#wifi-table tbody');
+      tbody.innerHTML = '';
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.timestamp}</td>
+          <td>${row.ssid || ''}</td>
+          <td>${row.bssid || ''}</td>
+          <td>${row.status}</td>
+          <td class="${row.internet ? 'ok' : 'fail'}">${row.internet ? 'Sí' : 'No'}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+    function resetFilters() {
+      document.getElementById('from').value = '';
+      document.getElementById('to').value = '';
+      loadWifiHistory();
+    }
+    loadWifiHistory();
+    intervalId = setInterval(loadWifiHistory, 10000);
+  </script>
+</body>
+</html>

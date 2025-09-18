@@ -57,8 +57,23 @@ app.get('/api/wifi/status', async (req, res) => {
   res.json(status);
 });
 
+// API con filtro de fechas opcional
 app.get('/api/wifi/history', (req, res) => {
-  db.all(`SELECT * FROM wifi_status ORDER BY timestamp DESC LIMIT 100`, (err, rows) => {
+  let { from, to } = req.query;
+  let query = 'SELECT * FROM wifi_status';
+  const params = [];
+  if (from && to) {
+    query += ' WHERE timestamp BETWEEN ? AND ?';
+    params.push(from, to);
+  } else if (from) {
+    query += ' WHERE timestamp >= ?';
+    params.push(from);
+  } else if (to) {
+    query += ' WHERE timestamp <= ?';
+    params.push(to);
+  }
+  query += ' ORDER BY timestamp DESC LIMIT 100';
+  db.all(query, params, (err, rows) => {
     if (err) {
       res.status(500).json({ error: 'Error consultando la base de datos' });
     } else {
@@ -91,10 +106,18 @@ setInterval(async () => {
   }
 }, 10 * 1000);
 
+
+// Servir la vista web de historial WiFi
+const path = require('path');
+app.get('/wifi-history', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'wifi-history.html'));
+});
+
 app.listen(PORT, () => {
   console.log(`🌐 Servicio WiFi iniciado en http://localhost:${PORT}`);
   console.log(`   Estado actual: http://localhost:${PORT}/api/wifi/status`);
-  console.log(`   Historial:     http://localhost:${PORT}/api/wifi/history`);
+  console.log(`   Historial API: http://localhost:${PORT}/api/wifi/history`);
+  console.log(`   Vista web:     http://localhost:${PORT}/wifi-history`);
 });
 
 process.on('SIGINT', () => {
