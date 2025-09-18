@@ -9,7 +9,7 @@ const PORT = process.env.WIFI_PORT || 3030;
 const DB_FILE = process.env.WIFI_DB_FILE || 'wifi_status.db';
 
 // Inicializar node-wifi
-difi.init({ iface: null });
+wifi.init({ iface: null });
 
 // Conectar a la base de datos
 const db = new sqlite3.Database(DB_FILE);
