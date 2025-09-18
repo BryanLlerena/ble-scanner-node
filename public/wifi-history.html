@@ -21,10 +21,12 @@
     <label>Hasta: <input type="datetime-local" id="to"></label>
     <button onclick="loadWifiHistory()">Filtrar</button>
     <button onclick="resetFilters()">Limpiar</button>
+    <button onclick="deleteAllWifiHistory()" style="float:right;background:#c00;color:#fff;">Borrar todo</button>
   </div>
   <table id="wifi-table">
     <thead>
       <tr>
+        <th>#</th>
         <th>Fecha/Hora</th>
         <th>SSID</th>
         <th>BSSID</th>
@@ -52,9 +54,10 @@
       const data = await res.json();
       const tbody = document.querySelector('#wifi-table tbody');
       tbody.innerHTML = '';
-      data.forEach(row => {
+      data.forEach((row, idx) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
+          <td>${data.length - idx}</td>
           <td>${row.timestamp}</td>
           <td>${row.ssid || ''}</td>
           <td>${row.bssid || ''}</td>
@@ -63,6 +66,12 @@
         `;
         tbody.appendChild(tr);
       });
+    }
+    async function deleteAllWifiHistory() {
+      if (confirm('¿Seguro que deseas borrar todos los registros de WiFi?')) {
+        await fetch('/api/wifi/history', { method: 'DELETE' });
+        loadWifiHistory();
+      }
     }
     function resetFilters() {
       document.getElementById('from').value = '';
