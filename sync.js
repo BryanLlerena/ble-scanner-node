@@ -289,8 +289,6 @@ async function sendNewBeaconEvents(db) {
       wifiInfo.wap_mac = info.bssid;
     }).catch(console.error);
 
-    console.log(wifiInfo);
-
     if (pendingEvents.length === 0) {
       logger.debug('📡 No hay eventos pendientes para enviar');
       return { success: true, sent: 0 };
@@ -335,8 +333,6 @@ async function updateExistingBeaconEvents(db) {
       wifiInfo.wap = info.ssid;
       wifiInfo.wap_mac = info.bssid;
     }).catch(console.error);
-
-    console.log(wifiInfo);
 
     if (updateEvents.length === 0) {
       return { success: true, updated: 0 };
