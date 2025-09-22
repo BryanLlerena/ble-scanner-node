@@ -284,10 +284,12 @@ async function sendNewBeaconEvents(db) {
   try {
     const pendingEvents = await getPendingEvents(db);
 
-    getWifiInfo().then(info => {
+    await getWifiInfo().then(info => {
       wifiInfo.wap = info.ssid;
       wifiInfo.wap_mac = info.bssid;
     }).catch(console.error);
+
+    console.log(wifiInfo);
 
     if (pendingEvents.length === 0) {
       logger.debug('📡 No hay eventos pendientes para enviar');
@@ -329,11 +331,13 @@ async function updateExistingBeaconEvents(db) {
   try {
     const updateEvents = await getPendingUpdateEvents(db);
 
-    getWifiInfo().then(info => {
+    await getWifiInfo().then(info => {
       wifiInfo.wap = info.ssid;
       wifiInfo.wap_mac = info.bssid;
     }).catch(console.error);
-    
+
+    console.log(wifiInfo);
+
     if (updateEvents.length === 0) {
       return { success: true, updated: 0 };
     }
