@@ -229,7 +229,7 @@ function markEventsAsSent(db, eventIds) {
 }
 
 // Convertir evento de BD a formato API
-function convertEventToApiFormat(event, wap, isUpdate = false) {
+function convertEventToApiFormat(event, wap) {
   // Parsear arrays RSSI (solo usar datos válidos para estadísticas)
   let validRssiArray = [];
   let discardArray = [];
@@ -249,41 +249,24 @@ function convertEventToApiFormat(event, wap, isUpdate = false) {
   // Calcular estadísticas solo con datos válidos
   const stats = calculateBeaconStats(validRssiArray);
   
-  if(isUpdate){
-    return {
-      mac: event.beaconMac,
-      unit: event.unit || UNIT,
-      f_inicio: new Date(event.f_inicio).getTime(),
-      f_final: new Date(event.f_final).getTime(),
-      duration: stats.duration,
-      rssi_min: stats.rssi_min,
-      rssi_max: stats.rssi_max,
-      rssi_mean: stats.rssi_mean,
-      distance: stats.distance,
-      uuid: event.uuid || generateUUID(),
-      connection: "offline",
-      rssi: validRssiArray,
-      rssi_discard: discardArray,
-    };
-  } else {
-    return {
-      mac: event.beaconMac,
-      unit: event.unit || UNIT,
-      f_inicio: new Date(event.f_inicio).getTime(),
-      f_final: new Date(event.f_final).getTime(),
-      duration: stats.duration,
-      rssi_min: stats.rssi_min,
-      rssi_max: stats.rssi_max,
-      rssi_mean: stats.rssi_mean,
-      distance: stats.distance,
-      uuid: event.uuid || generateUUID(),
-      connection: "offline",
-      rssi: validRssiArray,
-      rssi_discard: discardArray,
-      wap: wap.wap || "",
-      wap_mac: wap.wap_mac || ""
-    };
-  }
+
+  return {
+    mac: event.beaconMac,
+    unit: event.unit || UNIT,
+    f_inicio: new Date(event.f_inicio).getTime(),
+    f_final: new Date(event.f_final).getTime(),
+    duration: stats.duration,
+    rssi_min: stats.rssi_min,
+    rssi_max: stats.rssi_max,
+    rssi_mean: stats.rssi_mean,
+    distance: stats.distance,
+    uuid: event.uuid || generateUUID(),
+    connection: "offline",
+    rssi: validRssiArray,
+    rssi_discard: discardArray,
+    wap: wap.wap || "",
+    wap_mac: wap.wap_mac || ""
+  };
 }
 
 // Generar UUID simple
@@ -314,7 +297,7 @@ async function sendNewBeaconEvents(db) {
     logger.info(`📡 Enviando ${pendingEvents.length} eventos nuevos...`);
     
     // Convertir a formato API
-    const payload = pendingEvents.map((e) => convertEventToApiFormat(e, wifiInfo, false));
+    const payload = pendingEvents.map((e) => convertEventToApiFormat(e, wifiInfo));
 
     // Enviar a la API
     const response = await makeHttpRequest(API_ENDPOINTS.BEACON_TRACK_MANY, {
@@ -345,6 +328,11 @@ async function updateExistingBeaconEvents(db) {
   let wifiInfo = { wap: "", wap_mac: "" };
   try {
     const updateEvents = await getPendingUpdateEvents(db);
+
+    getWifiInfo().then(info => {
+      wifiInfo.wap = info.ssid;
+      wifiInfo.wap_mac = info.bssid;
+    }).catch(console.error);
     
     if (updateEvents.length === 0) {
       return { success: true, updated: 0 };
@@ -356,7 +344,7 @@ async function updateExistingBeaconEvents(db) {
     
     for (const event of updateEvents) {
       try {
-        const payload = convertEventToApiFormat(event, wifiInfo, true);
+        const payload = convertEventToApiFormat(event, wifiInfo);
         const updateUrl = `${API_ENDPOINTS.BEACON_TRACK_UPDATE}/${event.uuid}`;
         
         const response = await makeHttpRequest(updateUrl, {
