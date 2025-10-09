@@ -16,6 +16,13 @@
 </head>
 <body>
   <h1>Historial de Conectividad WiFi</h1>
+  <div style="margin-bottom:1em; padding:15px; background:#e8f5e8; border-radius:5px;">
+    <h3>Estado Actual</h3>
+    <div id="current-status">
+      <strong>Conexión:</strong> <span id="current-connection">Cargando...</span><br>
+      <strong>Hora de inicio:</strong> <span id="connection-start">--</span>
+    </div>
+  </div>
   <div style="margin-bottom:1em;">
     <label>Desde: <input type="datetime-local" id="from"></label>
     <label>Hasta: <input type="datetime-local" id="to"></label>
@@ -73,13 +80,44 @@
         loadWifiHistory();
       }
     }
+    async function loadCurrentStatus() {
+      try {
+        const res = await fetch('/api/wifi/status');
+        const status = await res.json();
+        document.getElementById('current-connection').textContent = 
+          status.status === 'connected' ? `${status.ssid} (Conectado)` : 'Desconectado';
+        
+        // Buscar hora de inicio de la conexión actual
+        if (status.status === 'connected') {
+          const histRes = await fetch('/api/wifi/history');
+          const history = await histRes.json();
+          const currentConnection = history.find(h => 
+            h.ssid === status.ssid && h.status === 'connected'
+          );
+          if (currentConnection) {
+            const startTime = new Date(currentConnection.timestamp).toLocaleString();
+            document.getElementById('connection-start').textContent = startTime;
+          }
+        } else {
+          document.getElementById('connection-start').textContent = '--';
+        }
+      } catch (error) {
+        document.getElementById('current-connection').textContent = 'Error al cargar';
+      }
+    }
+    
     function resetFilters() {
       document.getElementById('from').value = '';
       document.getElementById('to').value = '';
       loadWifiHistory();
     }
+    
     loadWifiHistory();
-    intervalId = setInterval(loadWifiHistory, 10000);
+    loadCurrentStatus();
+    intervalId = setInterval(() => {
+      loadWifiHistory();
+      loadCurrentStatus();
+    }, 5000); // Actualiza cada 5 segundos
   </script>
 </body>
 </html>

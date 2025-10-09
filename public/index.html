@@ -340,6 +340,19 @@
             <p>Sistema de monitoreo de beacons en tiempo real</p>
         </div>
 
+        <!-- Estado WiFi Actual -->
+        <div class="stat-card" style="margin-bottom: 20px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
+            <h3>📶 Estado WiFi Actual</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
+                <div>
+                    <strong>Conexión:</strong> <span id="current-wifi-connection">Cargando...</span>
+                </div>
+                <div>
+                    <strong>Hora de inicio:</strong> <span id="wifi-connection-start">--</span>
+                </div>
+            </div>
+        </div>
+
         <!-- Estadísticas -->
         <div class="stats-grid" id="statsGrid">
             <!-- Se llenan dinámicamente -->
@@ -446,6 +459,10 @@
         document.addEventListener('DOMContentLoaded', function() {
             loadStats();
             loadEvents();
+            loadCurrentWifiStatus();
+            
+            // Actualizar estado WiFi cada 5 segundos
+            setInterval(loadCurrentWifiStatus, 5000);
         });
 
         async function loadStats() {
@@ -753,6 +770,34 @@
                 return `${minutes}m ${secs}s`;
             } else {
                 return `${secs}s`;
+            }
+        }
+
+        // Funciones para el estado WiFi
+        async function loadCurrentWifiStatus() {
+            try {
+                const res = await fetch('http://localhost:3030/api/wifi/status');
+                const status = await res.json();
+                document.getElementById('current-wifi-connection').textContent = 
+                    status.status === 'connected' ? `${status.ssid} (Conectado)` : 'Desconectado';
+                
+                // Buscar hora de inicio de la conexión actual
+                if (status.status === 'connected') {
+                    const histRes = await fetch('http://localhost:3030/api/wifi/history');
+                    const history = await histRes.json();
+                    const currentConnection = history.find(h => 
+                        h.ssid === status.ssid && h.status === 'connected'
+                    );
+                    if (currentConnection) {
+                        const startTime = new Date(currentConnection.timestamp).toLocaleString('es-ES');
+                        document.getElementById('wifi-connection-start').textContent = startTime;
+                    }
+                } else {
+                    document.getElementById('wifi-connection-start').textContent = '--';
+                }
+            } catch (error) {
+                document.getElementById('current-wifi-connection').textContent = 'Error al cargar';
+                document.getElementById('wifi-connection-start').textContent = '--';
             }
         }
 
