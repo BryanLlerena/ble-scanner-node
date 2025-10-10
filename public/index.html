@@ -461,8 +461,12 @@
             loadEvents();
             loadCurrentWifiStatus();
             
-            // Actualizar estado WiFi cada 5 segundos
-            setInterval(loadCurrentWifiStatus, 5000);
+            // Actualizar todos los datos cada 1 segundo
+            setInterval(() => {
+                loadStats();
+                loadEvents();
+                loadCurrentWifiStatus();
+            }, 1000);
         });
 
         async function loadStats() {
