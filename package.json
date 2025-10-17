@@ -13,6 +13,7 @@
     "update-units": "node update-units.js",
     "view-wifi": "node view-wifi.js",
     "wifi-status": "node wifi-status.js",
+    "sync-processor": "node sync-processor.js",
     "regenerate-uuids": "node regenerate-uuids.js"
   },
   "dependencies": {

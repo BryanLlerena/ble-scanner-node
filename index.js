@@ -4,7 +4,7 @@ const noble = require('@abandonware/noble');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { syncBeaconEvents } = require('./sync');
+// Sincronización ahora manejada por sync-processor.js
 const logger = require('./logger');
 
 // Configuración desde variables de entorno
@@ -13,8 +13,7 @@ const DEBOUNCE_TIME = parseInt(process.env.DEBOUNCE_TIME) || 300;
 const TARGET_MAC_PREFIX = process.env.TARGET_MAC_PREFIX || "bc:57:29";
 const UNIT = process.env.UNIT || "TEST_UNIT";
 const DB_FILE = process.env.DB_FILE || "beacons.db";
-const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || 30000;
-const INITIAL_SYNC_DELAY = parseInt(process.env.INITIAL_SYNC_DELAY) || 10000;
+// Variables de sincronización movidas a sync-processor.js
 const DEBUG_DEVICES = process.env.DEBUG_DEVICES === 'true';
 const BEACON_TIMEOUT = parseInt(process.env.BEACON_TIMEOUT) || 3000; // 5 minutos por defecto
 
@@ -23,7 +22,7 @@ logger.info(`   SCAN_RANGE: ${SCAN_RANGE}m`);
 logger.info(`   DEBOUNCE_TIME: ${DEBOUNCE_TIME}s`);
 logger.info(`   TARGET_MAC_PREFIX: ${TARGET_MAC_PREFIX}`);
 logger.info(`   UNIT: ${UNIT}`);
-logger.info(`   SYNC_INTERVAL: ${SYNC_INTERVAL}ms`);
+// SYNC_INTERVAL ahora en sync-processor.js
 logger.info(`   DB_FILE: ${DB_FILE}`);
 logger.info(`   BEACON_TIMEOUT: ${BEACON_TIMEOUT}s`);
 
@@ -460,24 +459,7 @@ setInterval(processDetectedDevices, 1000);
 // Verificar beacons perdidos cada 30 segundos
 setInterval(closeExpiredBeaconEvents, 30000);
 
-// Sincronización con API usando configuración de .env
-setInterval(async () => {
-  try {
-    await syncBeaconEvents(db);
-  } catch (error) {
-    logger.error('❌ Error en sincronización automática:', error.message);
-  }
-}, SYNC_INTERVAL);
-
-// Sincronización inicial usando configuración de .env
-setTimeout(async () => {
-  logger.info('🚀 Iniciando primera sincronización...');
-  try {
-    await syncBeaconEvents(db);
-  } catch (error) {
-    logger.error('❌ Error en sincronización inicial:', error.message);
-  }
-}, INITIAL_SYNC_DELAY);
+// Sincronización ahora manejada por proceso independiente sync-processor.js
 
 process.on('SIGINT', () => {
   logger.info('\n🛑 Finalizando aplicación...');
