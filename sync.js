@@ -262,8 +262,8 @@ function convertEventToApiFormat(event, wap) {
     distance: stats.distance,
     uuid: event.uuid || generateUUID(),
     connection: "offline",
-    rssi: validRssiArray,
-    rssi_discard: discardArray,
+    rssi: [],
+    rssi_discard: [],
     wap: wap.wap || "",
     wap_mac: wap.wap_mac || ""
   };
