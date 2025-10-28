@@ -178,7 +178,7 @@ async function sendDataToMQTT() {
     // Enviar por MQTT
     const message = JSON.stringify(payload, null, 2);
     
-    mqttClient.publish(MQTT_TOPIC, message, { qos: 1 }, (err) => {
+    mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
       if (err) {
         logger.error('❌ Error enviando mensaje MQTT:', err.message);
       } else {
