@@ -171,6 +171,7 @@ async function sendDataToMQTT() {
       unit: UNIT,
       timestamp: new Date().toISOString(),
       count: lastEvents.length,
+      wap_mac: wifiInfo.wap_mac,
       events: lastEvents.map(event => convertEventToMqttFormat(event, wifiInfo))
     };
 
