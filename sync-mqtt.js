@@ -254,9 +254,6 @@ async function startMQTTService() {
     // Inicializar cliente MQTT
     await initMQTT();
     
-    // Enviar datos iniciales después de 5 segundos
-    setTimeout(sendDataToMQTT, 5000);
-    
     // Programar envíos periódicos
     setInterval(sendDataToMQTT, MQTT_INTERVAL);
     
