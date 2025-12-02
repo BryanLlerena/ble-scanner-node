@@ -1,0 +1,37 @@
+{
+  "apps": [
+    {
+      "name": "ble-scanner",
+      "script": "index-tablet.js",
+      "instances": 1,
+      "autorestart": true,
+      "watch": false,
+      "max_memory_restart": "1G",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "name": "sync-processor",
+      "script": "sync-processor.js",
+      "instances": 1,
+      "autorestart": true,
+      "watch": false,
+      "max_memory_restart": "512M",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "name": "mqtt-service",
+      "script": "sync-mqtt.js",
+      "instances": 1,
+      "autorestart": true,
+      "watch": false,
+      "max_memory_restart": "512M",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  ]
+}
