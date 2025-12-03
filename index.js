@@ -1,9 +1,9 @@
-// BLE Scanner para Raspberry Pi usando noble y SQLite
+// BLE Scanner usando bluetoothctl y SQLite (compatible con Yocto)
 require('dotenv').config();
-const noble = require('@abandonware/noble');
+const { spawn, exec } = require('child_process');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+// const { v4: uuidv4 } = require('uuid'); // Removido por compatibilidad ESM
 // Sincronización ahora manejada por sync-processor.js
 const logger = require('./logger');
 
@@ -14,10 +14,16 @@ const TARGET_MAC_PREFIX = process.env.TARGET_MAC_PREFIX || "bc:57:29";
 const UNIT = process.env.UNIT || "TEST_UNIT";
 const DB_FILE = process.env.DB_FILE || "beacons.db";
 // Variables de sincronización movidas a sync-processor.js
-const DEBUG_DEVICES = process.env.DEBUG_DEVICES === 'true';
+const DEBUG_DEVICES = true; // Activado para debugging
 const BEACON_TIMEOUT = parseInt(process.env.BEACON_TIMEOUT) || 3000; // 5 minutos por defecto
 
-logger.info('🔧 Configuración cargada:');
+// Variables para bluetoothctl
+let scanProcess;
+let watchdogTimer;
+let preventiveRestartTimer;
+const detectedMACs = new Set();
+
+logger.info('🔧 Configuración cargada');
 logger.info(`   SCAN_RANGE: ${SCAN_RANGE}m`);
 logger.info(`   DEBOUNCE_TIME: ${DEBOUNCE_TIME}s`);
 logger.info(`   TARGET_MAC_PREFIX: ${TARGET_MAC_PREFIX}`);
@@ -63,11 +69,15 @@ db.serialize(() => {
 });
 
 // Cache temporal para dispositivos detectados
-const detectedDevicesCache = new Map();
+// Cache removido - ahora procesamos dispositivos directamente
 
-// Generar UUID usando librería uuid + nombre de unidad
+// Generar UUID simple sin librería externa
 function generateUUID() {
-  return `${uuidv4()}-${UNIT}`;
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  }) + '-' + UNIT;
 }
 
 // Calcular distancia basada en RSSI
@@ -257,7 +267,6 @@ function getOpenEventByMac(mac, callback) {
         logger.error('❌ Error buscando evento abierto:', err);
         callback(err, null);
       } else {
-        logger.debug(`🔍 Evento abierto encontrado para ${mac} (últimos 2min):`, row ? `ID ${row.id}` : 'ninguno');
         callback(null, row);
       }
     }
@@ -346,115 +355,264 @@ function parseEddystone(serviceData) {
   return null;
 }
 
-// Procesar datos de beacon
-function processDevice(peripheral) {
-  let beaconInfo = parseIBeacon(peripheral.advertisement.manufacturerData);
+// Funciones de Noble removidas - ahora usamos bluetoothctl
+
+// Parsear datos de beacon desde bluetoothctl
+function parseBeaconData(line) {
+  let mac, rssi = -70, deviceName = '';
   
-  if (!beaconInfo) {
-    beaconInfo = parseEddystone(peripheral.advertisement.serviceData);
+  // Procesar nuevos dispositivos: [NEW] Device AA:BB:CC:DD:EE:FF Name
+  if (line.includes('[NEW] Device')) {
+    const newMatch = line.match(/\[NEW\] Device ([A-Fa-f0-9:]{17})(?:\s+(.*))?/);
+    if (!newMatch) return null;
+    
+    mac = newMatch[1].toLowerCase();
+    deviceName = newMatch[2] || 'Sin nombre';
+    rssi = -60; // RSSI por defecto para nuevos dispositivos
+    
+    // Solo mostrar dispositivos objetivo
+    const isTarget = mac.startsWith(TARGET_MAC_PREFIX.toLowerCase());
+    if (isTarget && !detectedMACs.has(mac)) {
+      detectedMACs.add(mac);
+      
+      console.log(`\n=== NUEVO DISPOSITIVO OBJETIVO ===`);
+      console.log(`🎯 MAC: ${mac.toUpperCase()}`);
+      console.log(`📝 Nombre: "${deviceName}"`);
+      console.log(`📶 RSSI: ${rssi} dBm (por defecto)`);
+      console.log(`📏 Distancia: ${calculateDistanceInM(rssi).toFixed(2)}m`);
+      console.log(`⏰ Hora: ${new Date().toLocaleTimeString()}`);
+      console.log(`==================================\n`);
+      
+      logger.info(`🎯 OBJETIVO MAC detectada: ${mac.toUpperCase()} | Nombre: "${deviceName}" | RSSI: ${rssi}`);
+    }
+  }
+  // Procesar cambios de RSSI: [CHG] Device AA:BB:CC:DD:EE:FF RSSI: -XX
+  else if (line.includes('[CHG] Device') && line.includes('RSSI:')) {
+    const chgMatch = line.match(/\[CHG\] Device ([A-Fa-f0-9:]{17}).*RSSI:\s*(-?\d+)/);
+    if (!chgMatch) return null;
+    mac = chgMatch[1].toLowerCase();
+    rssi = parseInt(chgMatch[2]);
+    deviceName = 'LS_Beacon_V8.4'; // Nombre por defecto para CHG events
+    
+    // Mostrar TODAS las actualizaciones de RSSI para dispositivos objetivo
+    const isTarget = mac.startsWith(TARGET_MAC_PREFIX.toLowerCase());
+    if (isTarget) {
+      console.log(`\n=== ACTUALIZACIÓN RSSI ===`);
+      console.log(`🎯 BEACON: ${mac.toUpperCase()}`);
+      console.log(`📶 RSSI: ${rssi} dBm`);
+      console.log(`📏 Distancia: ${calculateDistanceInM(rssi).toFixed(2)}m`);
+      console.log(`⏰ Hora: ${new Date().toLocaleTimeString()}`);
+      console.log(`=========================\n`);
+    }
+  }
+  else {
+    return null;
   }
   
-  const txPower = beaconInfo?.txPower || -59;
-  const distance = calculateDistance(peripheral.rssi || -100, txPower);
-  const distanceInM = calculateDistanceInM(peripheral.rssi || -100, txPower);
+  // Solo procesar beacons objetivo para la base de datos
+  if (!mac || !mac.startsWith(TARGET_MAC_PREFIX.toLowerCase())) return null;
+  
+  const distance = calculateDistanceInM(rssi);
   
   return {
-    deviceId: peripheral.id,
-    name: peripheral.advertisement.localName || null,
-    mac: peripheral.address,
-    rssi: peripheral.rssi,
-    type: beaconInfo ? beaconInfo.type : 'BLE',
-    uuid: beaconInfo?.uuid || null,
-    major: beaconInfo?.major || null,
-    minor: beaconInfo?.minor || null,
-    txPower: beaconInfo?.txPower || null,
-    namespace: beaconInfo?.namespace || null,
-    instance: beaconInfo?.instance || null,
-    distance: distance,
-    distanceInM: distanceInM,
-    manufacturerData: peripheral.advertisement.manufacturerData ? 
-      peripheral.advertisement.manufacturerData.toString('hex') : null,
-    serviceData: peripheral.advertisement.serviceData ? 
-      JSON.stringify(peripheral.advertisement.serviceData) : null,
-    isBeacon: !!beaconInfo
+    deviceId: mac,
+    mac,
+    name: deviceName || 'BLE Device',
+    rssi,
+    distance,
+    distanceInM: distance,
+    timestamp: Date.now(),
+    isBeacon: true,
+    type: 'BLE',
+    manufacturerData: null,
+    serviceData: null
   };
 }
 
-// Escaneo BLE
-noble.on('stateChange', state => {
-  if (state === 'poweredOn') {
-    noble.startScanning([], true);
-    logger.info('📡 Escaneo BLE iniciado...');
-  } else {
-    noble.stopScanning();
-    logger.warn(`⏸️ Escaneo BLE detenido. Estado: ${state}`);
-  }
-});
+// Función processDevice removida - bluetoothctl usa parseBeaconData directamente
 
-noble.on('discover', peripheral => {
-  const deviceData = processDevice(peripheral);
+// Iniciar escaneo BLE con bluetoothctl (optimizado para Yocto)
+function startBLEScan() {
+  logger.info('📡 Iniciando escaneo BLE con bluetoothctl...');
   
-  // Debug: Mostrar todos los dispositivos BLE detectados (controlado por variable de entorno)
+  // Reset completo del Bluetooth
+  logger.info('🔄 Ejecutando reset de Bluetooth hci0...');
+  exec('hciconfig hci0 down && sleep 1 && hciconfig hci0 up && sleep 2', (err) => {
+    if (err) {
+      logger.error('❌ Error reseteando hci0:', err.message);
+      logger.info('🔄 Reintentando en 10 segundos...');
+      setTimeout(startBLEScan, 10000);
+      return;
+    }
+    
+    logger.info('✅ Bluetooth reseteado correctamente');
+    
+    // Iniciar bluetoothctl
+    scanProcess = spawn('bluetoothctl', [], {
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    
+    let lastDeviceTime = Date.now();
+    
+    // Configurar bluetoothctl paso a paso
+    setTimeout(() => {
+      scanProcess.stdin.write('power on\n');
+      logger.info('🔌 Bluetooth power on');
+    }, 500);
+    
+    setTimeout(() => {
+      scanProcess.stdin.write('agent on\n');
+      logger.info('👤 Agent activado');
+    }, 1000);
+    
+    // Filtros de bluetoothctl removidos - no compatibles con esta versión
+    
+    setTimeout(() => {
+      scanProcess.stdin.write('scan on\n');
+      logger.info('🔍 Escaneo BLE iniciado (sin filtros adicionales)');
+      logger.info('⏰ Watchdog activado - reiniciará si no hay actividad por 120s');
+      
+      // Watchdog para detectar inactividad
+      watchdogTimer = setInterval(() => {
+        const timeSinceLastDevice = Date.now() - lastDeviceTime;
+        const secondsSinceLastDevice = Math.floor(timeSinceLastDevice / 1000);
+        
+        logger.info(`💓 Watchdog: ${secondsSinceLastDevice}s sin actividad BLE`);
+        
+        if (timeSinceLastDevice > 120000) { // 120 segundos sin dispositivos
+          logger.warn('⚠️ Sin actividad BLE por 120s - reiniciando scanner...');
+          clearInterval(watchdogTimer);
+          if (preventiveRestartTimer) {
+            clearTimeout(preventiveRestartTimer);
+          }
+          if (scanProcess) {
+            scanProcess.kill('SIGTERM');
+          }
+          setTimeout(startBLEScan, 3000);
+        }
+      }, 10000); // Check cada 10 segundos para más visibilidad
+      
+    }, 1500);
+    
+    scanProcess.stdout.on('data', (data) => {
+      const rawOutput = data.toString();
+      // Solo log de output si contiene dispositivos objetivo
+      const containsTargetDevice = rawOutput.toLowerCase().includes(TARGET_MAC_PREFIX.toLowerCase());
+      if (containsTargetDevice) {
+        logger.info(`📡 BLUETOOTHCTL TARGET OUTPUT: "${rawOutput.trim()}"`);
+      }
+      
+      const lines = rawOutput.split('\n');
+      
+      lines.forEach((line, index) => {
+        line = line.trim();
+        if (!line) return;
+        
+        // Debug: mostrar líneas con dispositivos objetivo
+        if (line.includes(TARGET_MAC_PREFIX.toLowerCase()) || line.includes(TARGET_MAC_PREFIX.toUpperCase())) {
+          logger.debug(`🔍 ⭐ LÍNEA CON TARGET: "${line}"`);
+        }
+        
+        // Limpiar línea de caracteres de control y códigos ANSI
+        const cleanLine = line
+          .replace(/[\x00-\x1F\x7F-\x9F]/g, '') // Remover caracteres de control
+          .replace(/\x1b\[[0-9;]*[mGKH]/g, '') // Remover códigos ANSI
+          .replace(/\[[0-9;]*m/g, '') // Remover códigos de color restantes
+          .replace(/\[K/g, '') // Remover clear line
+          .trim();
+        
+        // Solo procesar líneas de dispositivos con nuestro prefijo objetivo
+        if (/\[NEW\]\s+Device/.test(cleanLine) || (/\[CHG\]\s+Device/.test(cleanLine) && cleanLine.includes('RSSI'))) {
+          const macMatch = cleanLine.match(/([A-Fa-f0-9:]{17})/);
+          
+          if (macMatch && macMatch[1].toLowerCase().startsWith(TARGET_MAC_PREFIX.toLowerCase())) {
+            lastDeviceTime = Date.now();
+            
+            // Parsear y procesar beacon objetivo
+            const beaconData = parseBeaconData(cleanLine);
+            if (beaconData) {
+              logger.info(`🎯 Beacon objetivo procesado: ${macMatch[1].toUpperCase()}`);
+              processDetectedDevice(beaconData);
+            }
+          }
+        }
+      });
+    });
+    
+    scanProcess.stderr.on('data', (data) => {
+      logger.error('❌ Error bluetoothctl:', data.toString());
+    });
+    
+    scanProcess.on('close', (code) => {
+      logger.warn(`🔄 Bluetoothctl cerrado (código ${code}) - reiniciando...`);
+      if (watchdogTimer) {
+        clearInterval(watchdogTimer);
+      }
+      if (preventiveRestartTimer) {
+        clearTimeout(preventiveRestartTimer);
+      }
+      setTimeout(startBLEScan, 8000);
+    });
+    
+    // Reinicio preventivo cada 10 minutos (importante en Yocto)
+    preventiveRestartTimer = setTimeout(() => {
+      logger.info('🔄 Reinicio preventivo del scanner (10min)');
+      if (watchdogTimer) {
+        clearInterval(watchdogTimer);
+      }
+      if (preventiveRestartTimer) {
+        clearTimeout(preventiveRestartTimer);
+      }
+      if (scanProcess) {
+        scanProcess.kill('SIGTERM');
+      }
+      setTimeout(startBLEScan, 5000);
+    }, 600000); // 10 minutos
+  });
+}
+
+// Función para procesar dispositivo individual (lógica de debounce)
+function processDetectedDevice(device) {
+  if (!device || !device.isBeacon || !device.mac.startsWith(TARGET_MAC_PREFIX)) {
+    return;
+  }
+  
   if (DEBUG_DEVICES) {
-    logger.debug(`🔍 DEBUG - Dispositivo detectado:`);
-    logger.debug(`   ID: ${peripheral.deviceId}`);
-    logger.debug(`   MAC: ${deviceData.mac}`);
-    logger.debug(`   Nombre: ${deviceData.name || 'Sin nombre'}`);
-    logger.debug(`   RSSI: ${deviceData.rssi}`);
-    logger.debug(`   Es Beacon: ${deviceData.isBeacon}`);
-    logger.debug(`   Tipo: ${deviceData.type}`);
-    logger.debug(`   ManufacturerData: ${deviceData.manufacturerData || 'Ninguno'}`);
-    logger.debug(`   ServiceData: ${deviceData.serviceData || 'Ninguno'}`);
-    logger.debug(`   Cumple MAC filter: ${deviceData.mac.startsWith(TARGET_MAC_PREFIX)}`);
+    logger.debug(`🔍 DEBUG - Procesando dispositivo:`);
+    logger.debug(`   MAC: ${device.mac}`);
+    logger.debug(`   Nombre: ${device.name}`);
+    logger.debug(`   RSSI: ${device.rssi}`);
+    logger.debug(`   Distancia: ${device.distanceInM.toFixed(2)}m`);
     logger.debug('   ---');
   }
   
-  // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
-  if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
-    detectedDevicesCache.set(deviceData.deviceId, deviceData);
-    
-    logger.info(`🎯 Beacon detectado: ${deviceData.name} ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
-  }
-});
-
-// Función para procesar dispositivos acumulados (similar a tu lógica React Native)
-function processDetectedDevices() {
-  if (detectedDevicesCache.size === 0) return;
-
-  logger.debug(`📊 Procesando ${detectedDevicesCache.size} dispositivos acumulados...`);
+  logger.info(`🎯 Beacon detectado: ${device.name} ${device.type} | MAC=${device.mac} | RSSI=${device.rssi} | Distancia=${device.distanceInM.toFixed(2)}m`);
   
-  for (const [deviceId, device] of detectedDevicesCache) {
-    if (device.isBeacon && device.mac.startsWith(TARGET_MAC_PREFIX)) {
-      getOpenEventByMac(device.mac, (err, currentEvent) => {
-        if (err) {
-          logger.error('❌ Error consultando evento:', err);
-          return;
-        }
+  getOpenEventByMac(device.mac, (err, currentEvent) => {
+    if (err) {
+      logger.error('❌ Error consultando evento:', err);
+      return;
+    }
 
-        if (currentEvent) {
-          const timeSinceLastUpdate = (Date.now() - new Date(currentEvent.f_final).getTime()) / 1000;
-          if (timeSinceLastUpdate < DEBOUNCE_TIME) {
-            // Dentro del tiempo de gracia - actualizar siempre
-            updateBeaconEvent(device, currentEvent.id);
-          } else {
-            closeBeaconEvent(currentEvent.id, device.mac);
-            if(device.distanceInM <= SCAN_RANGE){
-              saveBeaconEvent(device);
-            }
-          }
-        } else if (device.distanceInM <= SCAN_RANGE) {
+    if (currentEvent) {
+      const timeSinceLastUpdate = (Date.now() - new Date(currentEvent.f_final).getTime()) / 1000;
+      if (timeSinceLastUpdate < DEBOUNCE_TIME) {
+        // Dentro del tiempo de gracia - actualizar siempre
+        updateBeaconEvent(device, currentEvent.id);
+      } else {
+        closeBeaconEvent(currentEvent.id, device.mac);
+        if(device.distanceInM <= SCAN_RANGE){
           saveBeaconEvent(device);
         }
-      });
+      }
+    } else if (device.distanceInM <= SCAN_RANGE) {
+      saveBeaconEvent(device);
     }
-  }
-  
-  // Limpiar cache después de procesar
-  detectedDevicesCache.clear();
-  logger.debug('✅ Dispositivos procesados y cache limpiado');
+  });
 }
 
-setInterval(processDetectedDevices, 1000);
+// Iniciar escaneo BLE
+startBLEScan();
 
 // Verificar beacons perdidos cada 30 segundos
 setInterval(closeExpiredBeaconEvents, 30000);
@@ -463,6 +621,21 @@ setInterval(closeExpiredBeaconEvents, 30000);
 
 process.on('SIGINT', () => {
   logger.info('\n🛑 Finalizando aplicación...');
+  
+  // Detener bluetoothctl si está activo
+  if (scanProcess && !scanProcess.killed) {
+    logger.info('🔌 Deteniendo bluetoothctl...');
+    scanProcess.kill('SIGTERM');
+  }
+  
+  // Limpiar timers
+  if (watchdogTimer) {
+    clearTimeout(watchdogTimer);
+  }
+  if (preventiveRestartTimer) {
+    clearTimeout(preventiveRestartTimer);
+  }
+  
   db.close((err) => {
     if (err) {
       logger.error('❌ Error cerrando base de datos:', err);
@@ -470,6 +643,6 @@ process.on('SIGINT', () => {
       logger.info('✅ Base de datos cerrada correctamente.');
     }
   });
-  noble.stopScanning();
+  
   process.exit();
 });
