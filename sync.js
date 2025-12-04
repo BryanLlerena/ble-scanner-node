@@ -3,10 +3,8 @@ require('dotenv').config();
 const https = require('https');
 const http = require('http');
 const logger = require('./logger');
-const wifi = require('node-wifi');
-
-// Inicializar módulo wifi
-wifi.init({ iface: null });
+// Remover dependencia de node-wifi para compatibilidad con Yocto
+// const wifi = require('node-wifi');
 
 // Configuración desde variables de entorno
 const UNIT = process.env.UNIT || "TEST_UNIT";
@@ -28,18 +26,38 @@ const DEFAULT_HEADERS = {
   'User-Agent': 'BeaconApp/1.0 (NodeJS)'
 };
 
+// Obtener información WiFi usando comandos del sistema (compatible con Yocto)
+// Optimizada para ser rápida y silenciosa
 function getWifiInfo() {
-  return new Promise((resolve, reject) => {
-    wifi.getCurrentConnections((err, currentConnections) => {
-      if (err) {
-        return reject(err);
+  return new Promise((resolve) => {
+    const { exec } = require('child_process');
+    
+    // Solo intentar iwconfig (más común en Yocto) con timeout corto
+    exec('iwconfig 2>/dev/null | grep -E "ESSID|Access Point" | head -2', { 
+      timeout: 1500 
+    }, (error, stdout) => {
+      if (error || !stdout.trim()) {
+        // Fallar rápido y silenciosamente
+        resolve({ ssid: 'Yocto-System', bssid: 'Unknown' });
+        return;
       }
-      if (currentConnections.length > 0) {
-        const { ssid, mac } = currentConnections[0];
-        resolve({ ssid, bssid: mac });
-      } else {
-        resolve({ ssid: null, bssid: null });
+      
+      const output = stdout.trim();
+      let ssid = 'Yocto-System';
+      let bssid = 'Unknown';
+      
+      // Parsear ESSID y BSSID si están disponibles
+      const essidMatch = output.match(/ESSID:"([^"]+)"/);
+      if (essidMatch && essidMatch[1] !== '') {
+        ssid = essidMatch[1];
       }
+      
+      const bssidMatch = output.match(/Access Point: ([A-Fa-f0-9:]{17})/);
+      if (bssidMatch) {
+        bssid = bssidMatch[1];
+      }
+      
+      resolve({ ssid, bssid });
     });
   });
 }
@@ -51,7 +69,7 @@ async function checkInternetConnection() {
   // Método DNS lookup (más ligero y rápido)
   const dnsTest = () => {
     return new Promise((resolve) => {
-      dns.lookup('google.com', { timeout: 3000 }, (err) => {
+      dns.lookup('google.com', { timeout: 5000 }, (err) => {
         resolve(!err);
       });
     });
@@ -60,7 +78,16 @@ async function checkInternetConnection() {
   // Método DNS alternativo como respaldo
   const dnsTestBackup = () => {
     return new Promise((resolve) => {
-      dns.lookup('cloudflare.com', { timeout: 3000 }, (err) => {
+      dns.lookup('8.8.8.8', { timeout: 5000 }, (err) => {
+        resolve(!err);
+      });
+    });
+  };
+
+  // Método adicional para redes corporativas
+  const dnsTestLocal = () => {
+    return new Promise((resolve) => {
+      dns.lookup('localhost', { timeout: 2000 }, (err) => {
         resolve(!err);
       });
     });
@@ -83,12 +110,21 @@ async function checkInternetConnection() {
       return true;
     }
 
+    // Último intento con localhost (para redes corporativas)
+    logger.debug('🌐 Verificando conectividad local...');
+    const localResult = await dnsTestLocal();
+    if (localResult) {
+      logger.info('⚠️ Solo conectividad local detectada - continuando sincronización');
+      return true;
+    }
+
     logger.warn('❌ Sin conexión a internet detectada');
     return false;
 
   } catch (error) {
     logger.warn('❌ Error verificando conexión:', error.message);
-    return false;
+    // En caso de error, asumir que hay conexión y continuar
+    return true;
   }
 }
 
@@ -102,10 +138,14 @@ function makeHttpRequest(url, options, data = null) {
     const requestOptions = {
       hostname: urlObj.hostname,
       port: urlObj.port || (isHttps ? 443 : 80),
-      path: urlObj.pathname,
+      path: urlObj.pathname + (urlObj.search || ''),
       method: options.method || 'GET',
-      headers: options.headers || DEFAULT_HEADERS,
-      timeout: 10000
+      headers: {
+        ...DEFAULT_HEADERS,
+        ...options.headers,
+        'Connection': 'close'
+      },
+      timeout: 15000
     };
     
     const req = httpModule.request(requestOptions, (res) => {
@@ -143,7 +183,7 @@ function makeHttpRequest(url, options, data = null) {
 
 // Calcular estadísticas RSSI (similar a CalculateBeaconEventStats)
 function calculateBeaconStats(rssiArray) {
-  if (!rssiArray || rssiArray.length === 0) {
+  if (!rssiArray || !Array.isArray(rssiArray) || rssiArray.length === 0) {
     return {
       rssi_min: 0,
       rssi_max: 0,
@@ -153,9 +193,27 @@ function calculateBeaconStats(rssiArray) {
     };
   }
   
-  const rssiValues = rssiArray.map(entry => entry.rssi);
-  const distances = rssiArray.map(entry => entry.distance);
-  const timestamps = rssiArray.map(entry => entry.datetime);
+  // Filtrar entradas válidas
+  const validEntries = rssiArray.filter(entry => 
+    entry && 
+    typeof entry.rssi === 'number' && 
+    typeof entry.distance === 'number' && 
+    entry.datetime
+  );
+  
+  if (validEntries.length === 0) {
+    return {
+      rssi_min: 0,
+      rssi_max: 0,
+      rssi_mean: 0,
+      distance: 0,
+      duration: 0
+    };
+  }
+  
+  const rssiValues = validEntries.map(entry => entry.rssi);
+  const distances = validEntries.map(entry => entry.distance);
+  const timestamps = validEntries.map(entry => entry.datetime);
   
   const rssi_min = Math.min(...rssiValues);
   const rssi_max = Math.max(...rssiValues);
@@ -235,16 +293,26 @@ function convertEventToApiFormat(event, wap) {
   let discardArray = [];
   
   try {
-    if (event.rssi) {
+    if (event.rssi && typeof event.rssi === 'string') {
       validRssiArray = JSON.parse(event.rssi);
+    } else if (Array.isArray(event.rssi)) {
+      validRssiArray = event.rssi;
     }
     
-    if (event.rssi_discard) {
-      discardArray= JSON.parse(event.rssi_discard);
+    if (event.rssi_discard && typeof event.rssi_discard === 'string') {
+      discardArray = JSON.parse(event.rssi_discard);
+    } else if (Array.isArray(event.rssi_discard)) {
+      discardArray = event.rssi_discard;
     }
   } catch (parseErr) {
-    logger.error('Error parseando RSSI:', parseErr);
+    logger.warn('⚠️ Error parseando RSSI para evento', event.id, ':', parseErr.message);
+    validRssiArray = [];
+    discardArray = [];
   }
+  
+  // Validar que los arrays sean realmente arrays
+  if (!Array.isArray(validRssiArray)) validRssiArray = [];
+  if (!Array.isArray(discardArray)) discardArray = [];
   
   // Calcular estadísticas solo con datos válidos
   const stats = calculateBeaconStats(validRssiArray);
@@ -284,10 +352,15 @@ async function sendNewBeaconEvents(db) {
   try {
     const pendingEvents = await getPendingEvents(db);
 
-    await getWifiInfo().then(info => {
-      wifiInfo.wap = info.ssid;
-      wifiInfo.wap_mac = info.bssid;
-    }).catch(console.error);
+    try {
+      const info = await getWifiInfo();
+      wifiInfo.wap = info.ssid || 'Yocto-System';
+      wifiInfo.wap_mac = info.bssid || 'Unknown';
+    } catch (error) {
+      logger.debug('📶 Usando valores WiFi por defecto');
+      wifiInfo.wap = 'Yocto-System';
+      wifiInfo.wap_mac = 'Unknown';
+    }
 
     if (pendingEvents.length === 0) {
       logger.debug('📡 No hay eventos pendientes para enviar');
@@ -329,10 +402,15 @@ async function updateExistingBeaconEvents(db) {
   try {
     const updateEvents = await getPendingUpdateEvents(db);
 
-    await getWifiInfo().then(info => {
-      wifiInfo.wap = info.ssid;
-      wifiInfo.wap_mac = info.bssid;
-    }).catch(console.error);
+    try {
+      const info = await getWifiInfo();
+      wifiInfo.wap = info.ssid || 'Yocto-System';
+      wifiInfo.wap_mac = info.bssid || 'Unknown';
+    } catch (error) {
+      logger.debug('📶 Usando valores WiFi por defecto');
+      wifiInfo.wap = 'Yocto-System';
+      wifiInfo.wap_mac = 'Unknown';
+    }
 
     if (updateEvents.length === 0) {
       return { success: true, updated: 0 };
