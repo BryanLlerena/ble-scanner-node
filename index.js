@@ -3,6 +3,7 @@ require('dotenv').config();
 const { spawn, exec } = require('child_process');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const crypto = require('crypto');
 // const { v4: uuidv4 } = require('uuid'); // Removido por compatibilidad ESM
 // Sincronización ahora manejada por sync-processor.js
 const logger = require('./logger');
@@ -14,7 +15,7 @@ const TARGET_MAC_PREFIX = process.env.TARGET_MAC_PREFIX || "bc:57:29";
 const UNIT = process.env.UNIT || "TEST_UNIT";
 const DB_FILE = process.env.DB_FILE || "beacons.db";
 // Variables de sincronización movidas a sync-processor.js
-const DEBUG_DEVICES = true; // Activado para debugging
+const DEBUG_DEVICES = false; // Desactivado para producción
 const BEACON_TIMEOUT = parseInt(process.env.BEACON_TIMEOUT) || 3000; // 5 minutos por defecto
 
 // Variables para bluetoothctl
@@ -71,13 +72,9 @@ db.serialize(() => {
 // Cache temporal para dispositivos detectados
 // Cache removido - ahora procesamos dispositivos directamente
 
-// Generar UUID simple sin librería externa
+// Generar UUID usando crypto nativo (compatible con todos los sistemas)
 function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c == 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  }) + '-' + UNIT;
+  return crypto.randomUUID() + '-' + UNIT;
 }
 
 // Calcular distancia basada en RSSI
@@ -145,7 +142,7 @@ function saveBeaconEvent(deviceData) {
       } else {
         const rssiCount = deviceData.distanceInM <= SCAN_RANGE ? 1 : 0;
         const rssiDiscardCount = deviceData.distanceInM > SCAN_RANGE ? 1 : 0;
-        logger.debug(`✅ Evento guardado para beacon ${deviceData.mac} | RSSI entries: ${rssiCount} | RSSI_discard entries: ${rssiDiscardCount}`);
+        // Evento guardado correctamente
       }
     }
   );
@@ -154,7 +151,7 @@ function saveBeaconEvent(deviceData) {
 // Función para actualizar evento existente
 function updateBeaconEvent(deviceData, eventId) {
   const timestamp = new Date().toISOString();
-  logger.debug(`🔄 Actualizando evento ${eventId} para beacon: ${deviceData.mac}`);
+  // Actualizando evento existente
   
   // Primero obtener arrays actuales para agregar nueva entrada
   db.get(
@@ -221,7 +218,7 @@ function updateBeaconEvent(deviceData, eventId) {
             logger.error('❌ Error actualizando evento:', err);
           } else {
             const finalUpdateMsg = deviceData.distanceInM <= SCAN_RANGE ? " | f_final actualizado" : " | f_final sin cambios (fuera de rango)";
-            logger.debug(`✅ Evento ${eventId} actualizado | RSSI entries: ${currentRssiArray.length} | RSSI_discard entries: ${currentRssiDiscardArray.length}${finalUpdateMsg}`);
+            // Evento actualizado correctamente
           }
         }
       );
@@ -276,7 +273,7 @@ function getOpenEventByMac(mac, callback) {
 // Función para cerrar eventos de beacons que han desaparecido (timeout)
 function closeExpiredBeaconEvents() {
   const now = Date.now();
-  logger.debug('🕐 Verificando beacons expirados...');
+  // Verificando beacons expirados
   
   // Obtener todos los eventos abiertos
   db.all(
@@ -288,11 +285,11 @@ function closeExpiredBeaconEvents() {
       }
       
       if (openEvents.length === 0) {
-        logger.debug('📋 No hay eventos abiertos para verificar');
+        // No hay eventos abiertos
         return;
       }
       
-      logger.debug(`📋 Verificando ${openEvents.length} eventos abiertos...`);
+      // Verificando eventos abiertos
       
       openEvents.forEach(event => {
         const lastFinalTime = new Date(event.f_final).getTime();
@@ -305,7 +302,7 @@ function closeExpiredBeaconEvents() {
           logger.warn(`⏰ Beacon ${event.beaconMac} perdido por ${Math.round(timeSinceLastSeen)}s - cerrando evento ${event.id}`);
           closeBeaconEvent(event.id, event.beaconMac);
         } else {
-          logger.debug(`✅ Beacon ${event.beaconMac} OK - última actividad hace ${Math.round(timeSinceLastSeen)}s`);
+          // Beacon activo
         }
       });
     }
@@ -375,15 +372,7 @@ function parseBeaconData(line) {
     if (isTarget && !detectedMACs.has(mac)) {
       detectedMACs.add(mac);
       
-      console.log(`\n=== NUEVO DISPOSITIVO OBJETIVO ===`);
-      console.log(`🎯 MAC: ${mac.toUpperCase()}`);
-      console.log(`📝 Nombre: "${deviceName}"`);
-      console.log(`📶 RSSI: ${rssi} dBm (por defecto)`);
-      console.log(`📏 Distancia: ${calculateDistanceInM(rssi).toFixed(2)}m`);
-      console.log(`⏰ Hora: ${new Date().toLocaleTimeString()}`);
-      console.log(`==================================\n`);
-      
-      logger.info(`🎯 OBJETIVO MAC detectada: ${mac.toUpperCase()} | Nombre: "${deviceName}" | RSSI: ${rssi}`);
+      logger.info(`🎯 Nuevo beacon detectado: ${mac.toUpperCase()} | RSSI: ${rssi} dBm`);
     }
   }
   // Procesar cambios de RSSI: [CHG] Device AA:BB:CC:DD:EE:FF RSSI: -XX
@@ -397,12 +386,7 @@ function parseBeaconData(line) {
     // Mostrar TODAS las actualizaciones de RSSI para dispositivos objetivo
     const isTarget = mac.startsWith(TARGET_MAC_PREFIX.toLowerCase());
     if (isTarget) {
-      console.log(`\n=== ACTUALIZACIÓN RSSI ===`);
-      console.log(`🎯 BEACON: ${mac.toUpperCase()}`);
-      console.log(`📶 RSSI: ${rssi} dBm`);
-      console.log(`📏 Distancia: ${calculateDistanceInM(rssi).toFixed(2)}m`);
-      console.log(`⏰ Hora: ${new Date().toLocaleTimeString()}`);
-      console.log(`=========================\n`);
+      // Beacon RSSI actualizado
     }
   }
   else {
@@ -498,9 +482,7 @@ function startBLEScan() {
       const rawOutput = data.toString();
       // Solo log de output si contiene dispositivos objetivo
       const containsTargetDevice = rawOutput.toLowerCase().includes(TARGET_MAC_PREFIX.toLowerCase());
-      if (containsTargetDevice) {
-        logger.info(`📡 BLUETOOTHCTL TARGET OUTPUT: "${rawOutput.trim()}"`);
-      }
+      // Solo procesar output con dispositivos objetivo
       
       const lines = rawOutput.split('\n');
       
@@ -509,9 +491,7 @@ function startBLEScan() {
         if (!line) return;
         
         // Debug: mostrar líneas con dispositivos objetivo
-        if (line.includes(TARGET_MAC_PREFIX.toLowerCase()) || line.includes(TARGET_MAC_PREFIX.toUpperCase())) {
-          logger.debug(`🔍 ⭐ LÍNEA CON TARGET: "${line}"`);
-        }
+        // Procesar líneas con dispositivos objetivo
         
         // Limpiar línea de caracteres de control y códigos ANSI
         const cleanLine = line
@@ -577,14 +557,7 @@ function processDetectedDevice(device) {
     return;
   }
   
-  if (DEBUG_DEVICES) {
-    logger.debug(`🔍 DEBUG - Procesando dispositivo:`);
-    logger.debug(`   MAC: ${device.mac}`);
-    logger.debug(`   Nombre: ${device.name}`);
-    logger.debug(`   RSSI: ${device.rssi}`);
-    logger.debug(`   Distancia: ${device.distanceInM.toFixed(2)}m`);
-    logger.debug('   ---');
-  }
+  // Procesando dispositivo detectado
   
   logger.info(`🎯 Beacon detectado: ${device.name} ${device.type} | MAC=${device.mac} | RSSI=${device.rssi} | Distancia=${device.distanceInM.toFixed(2)}m`);
   

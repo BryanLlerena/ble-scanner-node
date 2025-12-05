@@ -1,7 +1,7 @@
 // Script para regenerar UUIDs en eventos que fallaron al sincronizar
 require('dotenv').config();
 const sqlite3 = require('sqlite3').verbose();
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 const DB_FILE = process.env.DB_FILE || "beacons.db";
 const UNIT = process.env.UNIT || "TEST_UNIT";
@@ -14,7 +14,7 @@ const db = new sqlite3.Database(DB_FILE);
 
 // Generar UUID con unidad (igual que en index.js)
 function generateUUID() {
-  return `${uuidv4()}-${UNIT}`;
+  return `${crypto.randomUUID()}-${UNIT}`;
 }
 
 // Función para regenerar UUIDs de eventos que fallaron

@@ -3,17 +3,22 @@ require('dotenv').config();
 const mqtt = require('mqtt');
 const sqlite3 = require('sqlite3').verbose();
 const logger = require('./logger');
-const wifi = require('node-wifi');
-const { v4: uuidv4 } = require('uuid');
-// Inicializar módulo wifi
-wifi.init({ iface: null });
+// Remover dependencia de node-wifi para compatibilidad con Yocto
+// const wifi = require('node-wifi');
+// Usar crypto nativo en lugar de uuid externo
+const crypto = require('crypto');
 
 const UNIT = process.env.UNIT || "TEST_UNIT";
 const DB_FILE = process.env.DB_FILE || 'beacons.db';
 const COMPANY = process.env.MQTT_COMPANY || 'gunjop';
 
 const MQTT_BROKER = process.env.MQTT_BROKER || 'mqtt://localhost:1883';
-const MQTT_CLIENT_ID = `${uuidv4()}_${UNIT}`;
+// Generar UUID usando crypto nativo (compatible con todos los sistemas)
+function generateUUID() {
+  return crypto.randomUUID();
+}
+
+const MQTT_CLIENT_ID = `${generateUUID()}_${UNIT}`;
 const MQTT_USERNAME = process.env.MQTT_USERNAME || null;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD || null;
 const MQTT_INTERVAL = parseInt(process.env.MQTT_INTERVAL) || 60000;
@@ -37,25 +42,44 @@ if (MQTT_USERNAME && MQTT_PASSWORD) {
   mqttOptions.password = MQTT_PASSWORD;
 }
 
+// Obtener información WiFi usando comandos del sistema (compatible con Yocto)
 function getWifiInfo() {
-  return new Promise((resolve, reject) => {
-    wifi.getCurrentConnections((err, currentConnections) => {
-      if (err) {
-        return reject(err);
+  return new Promise((resolve) => {
+    const { exec } = require('child_process');
+    
+    // Intentar iwconfig con timeout corto para MQTT
+    exec('iwconfig 2>/dev/null | grep -E "ESSID|Access Point" | head -2', { 
+      timeout: 1000 
+    }, (error, stdout) => {
+      if (error || !stdout.trim()) {
+        // Fallar rápido y silenciosamente para MQTT
+        resolve({ ssid: 'MQTT-System', bssid: 'Unknown' });
+        return;
       }
-      if (currentConnections.length > 0) {
-        const { ssid, mac } = currentConnections[0];
-        resolve({ ssid, bssid: mac });
-      } else {
-        resolve({ ssid: null, bssid: null });
+      
+      const output = stdout.trim();
+      let ssid = 'MQTT-System';
+      let bssid = 'Unknown';
+      
+      // Parsear ESSID y BSSID si están disponibles
+      const essidMatch = output.match(/ESSID:"([^"]+)"/);
+      if (essidMatch && essidMatch[1] !== '') {
+        ssid = essidMatch[1];
       }
+      
+      const bssidMatch = output.match(/Access Point: ([A-Fa-f0-9:]{17})/);
+      if (bssidMatch) {
+        bssid = bssidMatch[1];
+      }
+      
+      resolve({ ssid, bssid });
     });
   });
 }
 
-// Calcular estadísticas RSSI
+// Calcular estadísticas RSSI con validaciones mejoradas
 function calculateBeaconStats(rssiArray) {
-  if (!rssiArray || rssiArray.length === 0) {
+  if (!rssiArray || !Array.isArray(rssiArray) || rssiArray.length === 0) {
     return {
       rssi_min: 0,
       rssi_max: 0,
@@ -65,9 +89,27 @@ function calculateBeaconStats(rssiArray) {
     };
   }
   
-  const rssiValues = rssiArray.map(entry => entry.rssi);
-  const distances = rssiArray.map(entry => entry.distance);
-  const timestamps = rssiArray.map(entry => entry.datetime);
+  // Filtrar entradas válidas
+  const validEntries = rssiArray.filter(entry => 
+    entry && 
+    typeof entry.rssi === 'number' && 
+    typeof entry.distance === 'number' && 
+    entry.datetime
+  );
+  
+  if (validEntries.length === 0) {
+    return {
+      rssi_min: 0,
+      rssi_max: 0,
+      rssi_mean: 0,
+      distance: 0,
+      duration: 0
+    };
+  }
+  
+  const rssiValues = validEntries.map(entry => entry.rssi);
+  const distances = validEntries.map(entry => entry.distance);
+  const timestamps = validEntries.map(entry => entry.datetime);
   
   const rssi_min = Math.min(...rssiValues);
   const rssi_max = Math.max(...rssiValues);
@@ -107,16 +149,22 @@ function getLastFiveEvents(db) {
 
 // Convertir evento de BD a formato API/MQTT
 function convertEventToMqttFormat(event, wap) {
-  // Parsear arrays RSSI
+  // Parsear arrays RSSI con validaciones mejoradas
   let validRssiArray = [];
   
   try {
-    if (event.rssi) {
+    if (event.rssi && typeof event.rssi === 'string') {
       validRssiArray = JSON.parse(event.rssi);
+    } else if (Array.isArray(event.rssi)) {
+      validRssiArray = event.rssi;
     }
   } catch (parseErr) {
-    logger.error('Error parseando RSSI:', parseErr);
+    logger.warn('⚠️ Error parseando RSSI para evento MQTT', event.id, ':', parseErr.message);
+    validRssiArray = [];
   }
+  
+  // Validar que sea realmente un array
+  if (!Array.isArray(validRssiArray)) validRssiArray = [];
   
   // Calcular estadísticas
   const stats = calculateBeaconStats(validRssiArray);
@@ -152,10 +200,12 @@ async function sendDataToMQTT() {
     let wifiInfo = { wap: "", wap_mac: "" };
     try {
       const info = await getWifiInfo();
-      wifiInfo.wap = info.ssid;
-      wifiInfo.wap_mac = info.bssid;
+      wifiInfo.wap = info.ssid || 'MQTT-System';
+      wifiInfo.wap_mac = info.bssid || 'Unknown';
     } catch (wifiErr) {
-      logger.warn('⚠️ No se pudo obtener información WiFi:', wifiErr.message);
+      logger.debug('📶 Usando valores WiFi por defecto para MQTT');
+      wifiInfo.wap = 'MQTT-System';
+      wifiInfo.wap_mac = 'Unknown';
     }
 
     // Obtener los últimos 5 eventos
