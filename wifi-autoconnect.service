@@ -1,0 +1,16 @@
+[Unit]
+Description=WiFi Auto-connect Service
+After=network-pre.target
+Before=network.target
+Wants=network-pre.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=10
+ExecStart=/usr/local/bin/wifi-autoconnect.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
