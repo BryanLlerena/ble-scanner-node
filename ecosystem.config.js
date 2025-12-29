@@ -1,4 +1,4 @@
-{
+module.exports = {
   apps: [
     {
       name: 'ble-scanner',
@@ -46,4 +46,4 @@
       time: true
     }
   ]
-}
+};
