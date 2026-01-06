@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=BLE Scanner
+Comment=Bluetooth Low Energy Scanner for Raspberry Pi
+Exec=/usr/bin/application/ble_scanner
+Icon=bluetooth
+Terminal=false
+Categories=System;Network;
+StartupNotify=true

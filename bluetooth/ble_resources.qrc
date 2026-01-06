@@ -1,0 +1,10 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/">
+    <!-- Iconos y recursos para BLE Scanner -->
+    <!-- <file>icons/bluetooth.png</file> -->
+    <!-- <file>icons/scan.png</file> -->
+    <!-- <file>icons/connect.png</file> -->
+    
+    <!-- Añadir aquí archivos de recursos según sea necesario -->
+</qresource>
+</RCC>

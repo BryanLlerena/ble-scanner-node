@@ -5,6 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "start-old": "node index_old.js",
+    "compile-qt": "cd bluetooth && qmake BLE_Scanner.pro && make",
+    "start-qt-system": "./start_hybrid.sh",
+    "stop-qt-system": "./stop_hybrid.sh",
     "view": "node view-data.js",
     "delete": "node delete-data.js",
     "sync-status": "node sync-status.js",
