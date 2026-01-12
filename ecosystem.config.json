@@ -32,6 +32,18 @@
       "env": {
         "NODE_ENV": "production"
       }
+    },
+    {
+      "name": "web-viewer",
+      "script": "web-viewer.js",
+      "instances": 1,
+      "autorestart": true,
+      "watch": false,
+      "max_memory_restart": "512M",
+      "env": {
+        "NODE_ENV": "production",
+        "WEB_PORT": 3000
+      }
     }
   ]
 }

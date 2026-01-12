@@ -24,7 +24,7 @@ function initDatabase() {
       process.exit(1);
     }
     logger.info('📊 Base de datos SQLite conectada');
-    
+
     // Crear tabla si no existe
     db.run(`
       CREATE TABLE IF NOT EXISTS beacon_events (
@@ -53,7 +53,7 @@ function initDatabase() {
 // Calcular distancia desde RSSI
 function calculateDistance(rssi, txPower = -59) {
   if (rssi === 0) return -1.0;
-  
+
   const ratio = (txPower - rssi) / 20.0;
   return Math.pow(10, ratio);
 }
@@ -63,15 +63,15 @@ function parseBeaconData(line) {
   // Formato hcitool: "XX:XX:XX:XX:XX:XX (RSSI: -XX)"
   const match = line.match(/([0-9A-F:]{17})\s+.*RSSI:\s*(-?\d+)/i);
   if (!match) return null;
-  
+
   const mac = match[1].toLowerCase();
   const rssi = parseInt(match[2]);
-  
+
   // Filtrar solo nuestros beacons
-  if (!mac.startsWith(TARGET_MAC_PREFIX)) return null;
-  
+  if (!mac.startsWith(TARGET_MAC_PREFIX.toLowerCase())) return null;
+
   const distance = calculateDistance(rssi);
-  
+
   return {
     mac,
     rssi,
@@ -88,10 +88,10 @@ function saveBeaconEvent(beaconData) {
     distance: beaconData.distance,
     datetime: beaconData.timestamp
   };
-  
+
   const rssi = beaconData.distance <= SCAN_RANGE ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
   const rssi_discard = beaconData.distance > SCAN_RANGE ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
-  
+
   db.run(`
     INSERT INTO beacon_events (beaconMac, unit, f_inicio, f_final, rssi, rssi_discard, uuid)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -103,7 +103,7 @@ function saveBeaconEvent(beaconData) {
     rssi,
     rssi_discard,
     generateUUID()
-  ], function(err) {
+  ], function (err) {
     if (err) {
       logger.error('Error guardando evento:', err.message);
     } else {
@@ -121,26 +121,26 @@ function generateUUID() {
 // Iniciar escaneo BLE con hcitool
 function startBLEScan() {
   logger.info('📡 Iniciando escaneo BLE con hcitool...');
-  
+
   // Verificar que hci0 esté activo
   exec('hciconfig hci0 up', (err) => {
     if (err) {
       logger.error('Error activando hci0:', err.message);
       return;
     }
-    
+
     // Iniciar escaneo continuo
     scanProcess = spawn('hcitool', ['lescan', '--duplicates'], {
       stdio: ['ignore', 'pipe', 'pipe']
     });
-    
+
     scanProcess.stdout.on('data', (data) => {
       const lines = data.toString().split('\n');
-      
+
       lines.forEach(line => {
         line = line.trim();
         if (!line || line.includes('LE Scan')) return;
-        
+
         // Parsear y procesar beacon
         const beaconData = parseBeaconData(line);
         if (beaconData) {
@@ -148,17 +148,17 @@ function startBLEScan() {
         }
       });
     });
-    
+
     scanProcess.stderr.on('data', (data) => {
       logger.error('Error en escaneo:', data.toString());
     });
-    
+
     scanProcess.on('close', (code) => {
       logger.warn(`Proceso de escaneo terminó con código ${code}`);
       // Reiniciar escaneo después de 5 segundos
       setTimeout(startBLEScan, 5000);
     });
-    
+
     logger.info('✅ Escaneo BLE iniciado con hcitool');
   });
 }
@@ -166,12 +166,12 @@ function startBLEScan() {
 // Cerrar eventos antiguos
 function closeExpiredEvents() {
   const expiredTime = new Date(Date.now() - (BEACON_TIMEOUT * 1000)).toISOString();
-  
+
   db.run(`
     UPDATE beacon_events 
     SET syncStatus = 'pending'
     WHERE f_final < ? AND syncStatus = 'active'
-  `, [expiredTime], function(err) {
+  `, [expiredTime], function (err) {
     if (err) {
       logger.error('Error cerrando eventos expirados:', err.message);
     } else if (this.changes > 0) {
@@ -183,11 +183,11 @@ function closeExpiredEvents() {
 // Manejo de señales para cierre limpio
 process.on('SIGINT', () => {
   logger.info('🛑 Cerrando aplicación...');
-  
+
   if (scanProcess) {
     scanProcess.kill('SIGTERM');
   }
-  
+
   if (db) {
     db.close((err) => {
       if (err) {
@@ -215,7 +215,7 @@ initDatabase();
 // Esperar un poco antes de iniciar el escaneo
 setTimeout(() => {
   startBLEScan();
-  
+
   // Limpiar eventos expirados cada 30 segundos
   setInterval(closeExpiredEvents, 30000);
 }, 2000);
