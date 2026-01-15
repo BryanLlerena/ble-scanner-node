@@ -19,8 +19,8 @@ autoscan=periodic:10
 
 # RED 1: Alta Prioridad
 network={
-    ssid="UNDIS_GUNJOP"
-    psk="%porvenir123%"
+    ssid="UNDIS_FMS_EP"
+    psk="%elporvenir123%"
     priority=10
     id_str="principal"
 }
@@ -29,6 +29,14 @@ network={
 network={
     ssid="brll-ryu"
     psk="12345678"
+    priority=5
+    id_str="respaldo"
+}
+
+# RED 1: Alta Prioridad
+network={
+    ssid="GUNJOPERS"
+    psk="gunjop2023"
     priority=5
     id_str="respaldo"
 }
@@ -438,3 +446,54 @@ Si falla por **timeout** al descargar headers:
 3. Instala herramientas de compilación:
    `apt-get update && apt-get install -y build-essential`
 
+---
+
+## Configuración Especial: App Porvenir (Puerto 3001)
+
+Si deseas ejecutar la aplicación `app-porvenir` (ubicada en la carpeta adyacente) y visualizarla en el Chromium:
+
+### 1. Desplegar App Porvenir con PM2
+La aplicación se encuentra en `/mnt/storage/www/app-porvenir` y su build es `dist/index.js`.
+
+```bash
+# Navegar a la carpeta de la app
+cd /mnt/storage/www/app-porvenir
+
+# Instalar dependencias (si es necesario)
+npm install
+
+# Iniciar la aplicación en el puerto 3001
+# Usamos 'pm2 serve' para servir archivos estáticos (HTML/JS/CSS)
+pm2 serve dist 3001 --name app-porvenir
+
+# Guardar cambios
+pm2 save
+```
+
+### 2. Modificar Chromium para visualizar Puerto 3001
+Si quieres que el modo Kiosk apunte a esta nueva aplicación, actualiza el servicio de Chromium:
+
+```bash
+# Editar el servicio
+vi /etc/systemd/system/chromium-kiosk.service
+```
+
+Cambia la línea `http://localhost:3000` por `http://localhost:3001`:
+
+```ini
+# ... dentro de /etc/systemd/system/chromium-kiosk.service
+ExecStart=/usr/bin/chromium \
+  --kiosk \
+  --no-sandbox \
+  --window-position=0,0 \
+  --window-size=1280,800 \
+  --disable-infobars \
+  --user-data-dir=/mnt/storage/chromium-profile \
+  http://localhost:3001
+```
+
+### 3. Reiniciar Servicios
+```bash
+systemctl daemon-reload
+systemctl restart chromium-kiosk.service
+```
