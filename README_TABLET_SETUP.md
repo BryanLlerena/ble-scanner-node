@@ -303,7 +303,7 @@ npm install
 
 # 4. Iniciar con PM2
 # Para levantar TODO (Scanner + Web + Sync):
-pm2 start ecosystem.config.json
+pm2 start ecosystem.config.js
 
 # O si solo quieres levantar la WEB por separado:
 pm2 start web-viewer.js --name web-viewer
@@ -315,7 +315,33 @@ pm2 save
 pm2 status
 ```
 
-## Paso 6: Modo Kiosk con Chromium (Opcional)
+## Paso 6: Configuración de Bluetooth (Noble)
+
+Para que la librería `@abandonware/noble` funcione correctamente, necesitamos instalar dependencias del sistema y otorgar permisos a Node.js para acceder al Bluetooth sin ser root (o para asegurar el acceso correcto).
+
+### 1. Instalar dependencias de Bluetooth
+```bash
+apt-get update
+apt-get install -y bluetooth bluez libbluetooth-dev libudev-dev
+```
+
+### 2. Otorgar permisos a Node.js
+Esto permite que Node.js acceda directamente al adaptador Bluetooth.
+```bash
+setcap cap_net_raw+eip $(eval readlink -f `which node`)
+```
+
+### 3. Verificar con Script de Prueba
+Usa el archivo `test-noble.js` que se encuentra en la raíz del proyecto para confirmar que el adaptador es detectado:
+```bash
+cd /mnt/storage/www/ble-scanner-node
+node test-noble.js
+```
+*Si ves "Estado del adaptador: poweredOn", la configuración es correcta.*
+
+---
+
+## Paso 7: Modo Kiosk con Chromium (Opcional)
 
 Si quieres que la Tablet abra automáticamente la web al encenderse, configuraremos un servicio para Chromium en modo Kiosk.
 
@@ -497,3 +523,76 @@ ExecStart=/usr/bin/chromium \
 systemctl daemon-reload
 systemctl restart chromium-kiosk.service
 ```
+
+---
+
+## Paso 8: Configuración de Tailscale (Acceso Remoto)
+
+Tailscale te permite acceder a la tablet de forma segura desde cualquier lugar sin configurar VPNs complejas o abrir puertos en el router.
+
+### 1. (Opcional) Solución de errores en repositorios (APT Fix)
+Si al intentar instalar Tailscale recibes un error tipo `404 Not Found` en repositorios como `bullseye-backports`, ejecuta estos comandos para limpiar la configuración:
+
+```bash
+# Deshabilitar repositorios de backports que suelen fallar
+sed -i 's/^deb.*bullseye-backports/# &/' /etc/apt/sources.list
+
+# Limpiar y actualizar la lista de paquetes
+apt-get clean
+apt-get update
+```
+
+### 2. Instalación rápida
+Ejecuta el script oficial de instalación:
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+```
+
+### 3. Iniciar y Vincular con SSH (Recomendado)
+Para poder entrar a la terminal incluso desde el navegador, activa Tailscale con el flag de SSH:
+```bash
+tailscale up --ssh
+```
+*Copia el enlace que aparece, inicia sesión y la tablet quedará registrada con la terminal web habilitada.*
+
+### 4. Acceder por Nombre (MagicDNS)
+No necesitas recordar la IP. Gracias a **MagicDNS**, puedes acceder a la tablet usando su nombre (hostname) desde cualquier otro dispositivo donde también tengas Tailscale iniciado:
+
+- **Para ver el nombre de tu tablet:**
+  ```bash
+  hostname
+  ```
+- **Ejemplo de acceso por terminal (PC):**
+  Si el hostname es `deb-tablet`, puedes entrar por SSH así:
+  - SSH: `ssh root@deb-tablet`
+
+### 5. Verificar y Terminal Web
+Entra en [login.tailscale.com](https://login.tailscale.com) para gestionar tus dispositivos.
+
+- **Para usar la Terminal desde el Navegador:**
+  1. Busca tu tablet en la lista.
+  2. Haz clic en los tres puntos **(...)** al final de la fila.
+  3. Selecciona **"SSH into machine..."**.
+  4. Se abrirá una terminal directamente en tu navegador. ¡Ya estás dentro!
+
+---
+
+## Cómo conectarte a la Tablet desde tu PC (Windows/Mac/Linux)
+
+Tienes dos formas principales de entrar a la terminal de la tablet remotamente:
+
+### Opción A: Desde tu Navegador (Sin instalar nada en tu PC)
+1. Entra a tu panel de Tailscale: [login.tailscale.com](https://login.tailscale.com).
+2. En tu tablet, haz clic en el botón de los tres puntos `...` y elige **SSH into machine**.
+3. ¡Listo! Tendrás una terminal funcional en una pestaña del navegador.
+
+### Opción B: Desde la Terminal de tu PC (Más rápido y potente)
+1. **Instala Tailscale en tu PC**: Descárgalo en [tailscale.com/download](https://tailscale.com/download) e inicia sesión.
+2. **Abre PowerShell (Windows) o Terminal (Mac/Linux)**.
+3. **Ejecuta el SSH**:
+   ```bash
+   ssh root@nombre-tablet  # O usa la IP de Tailscale
+   ```
+4. **Contraseña**: Introduce `gunjop123`.
+
+¡Listo! Ya tienes control total de la tablet de forma remota.
