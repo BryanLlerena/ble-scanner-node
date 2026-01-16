@@ -301,6 +301,55 @@ cd ble-scanner-node
 git checkout hybrid
 npm install
 
+# Crear .env
+vi .env
+
+#Presionar i
+#pegar 
+# Rango de escaneo en metros (solo detectar beacons dentro de este rango)
+SCAN_RANGE=10
+
+# Tiempo de gracia en segundos antes de cerrar un evento (debounce)
+DEBOUNCE_TIME=60
+
+# Tiempo máximo sin detectar un beacon antes de cerrar automáticamente su evento (en segundos)
+BEACON_TIMEOUT=300
+
+# Prefijo MAC de los beacons a procesar (solo estos serán guardados)
+TARGET_MAC_PREFIX=bc:57:29
+
+# Identificador de la unidad/dispositivo scanner
+UNIT=TEST_UNIT
+
+# Configuración de API
+API_BASE_URL=http://172.236.110.18:3001/api/v1
+
+# Configuración de sincronización
+SYNC_INTERVAL=30000
+INITIAL_SYNC_DELAY=10000
+SKIP_INTERNET_CHECK=false
+
+# Configuración de base de datos
+DB_FILE=beacons.db
+
+# Configuración del servidor web
+WEB_PORT=3000
+
+# Configuración de logging (opcional)
+LOG_LEVEL=info
+NODE_ENV=production
+
+# Variables para MQTT y WiFi
+MQTT_COMPANY=gunjop
+MQTT_BROKER=mqtt://localhost:1883
+MQTT_USERNAME=porvenir
+MQTT_PASSWORD=porvenir123
+MQTT_INTERVAL=60000
+WIFI_PORT=3030
+WIFI_DB_FILE=wifi_status.db
+
+#presioanr esc dos veces
+
 # 4. Iniciar con PM2
 # Para levantar TODO (Scanner + Web + Sync):
 pm2 start ecosystem.config.js
@@ -482,11 +531,32 @@ Si deseas ejecutar la aplicación `app-porvenir` (ubicada en la carpeta adyacent
 La aplicación se encuentra en `/mnt/storage/www/app-porvenir` y su build es `dist/index.js`.
 
 ```bash
+# Navegar a la carpeta
+cd /mnt/storage/www/
+
+# Clonar el repositorio
+git clone https://github.com/GUNJOP-PERU/app-porvenir.git
+
 # Navegar a la carpeta de la app
 cd /mnt/storage/www/app-porvenir
 
 # Instalar dependencias (si es necesario)
 npm install
+
+# Crear .env
+vi .env
+
+#Presionar i
+#pegar 
+VITE_APP_API_URL=http://172.235.137.146:3001/api/v1
+VITE_MQTT_URL="ws://paranoid.lat:8093/mqtt"
+VITE_MQTT_USERNAME="nexa.gunjop.tablets"
+VITE_MQTT_PASSWORD="*C8wjJr9jK5fJ1&UL4h2VY5"
+#presioanr esc dos veces
+#luego guardar esribiendo :wq
+
+# Build del proyecto
+npm run build
 
 # Iniciar la aplicación en el puerto 3001
 # Usamos 'pm2 serve' para servir archivos estáticos (HTML/JS/CSS)
