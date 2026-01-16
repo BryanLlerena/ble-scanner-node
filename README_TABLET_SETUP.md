@@ -315,13 +315,13 @@ vi .env
     BEACON_TIMEOUT=300
 
     # Prefijo MAC de los beacons a procesar (solo estos serán guardados)
-    TARGET_MAC_PREFIX=bc:57:29
+    TARGET_MAC_PREFIX="af:20:24"
 
     # Identificador de la unidad/dispositivo scanner
-    UNIT=TEST_UNIT
+    UNIT="TRUCK-1"
 
     # Configuración de API
-    API_BASE_URL=http://172.236.110.18:3001/api/v1
+    API_BASE_URL=http://172.235.137.146:3001/api/v1
 
     # Configuración de sincronización
     SYNC_INTERVAL=30000
@@ -340,7 +340,7 @@ vi .env
 
     # Variables para MQTT y WiFi
     MQTT_COMPANY=gunjop
-    MQTT_BROKER=mqtt://localhost:1883
+    MQTT_BROKER=mqtt://paranoid.lat:1883
     MQTT_USERNAME=porvenir
     MQTT_PASSWORD=porvenir123
     MQTT_INTERVAL=60000
