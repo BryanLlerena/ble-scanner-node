@@ -36,7 +36,7 @@ network={
 # RED 1: Alta Prioridad
 network={
     ssid="GUNJOPERS"
-    psk="gunjop2023"
+    psk="Gunjop2023"
     priority=5
     id_str="respaldo"
 }
@@ -298,7 +298,6 @@ git clone https://github.com/BryanLlerena/ble-scanner-node.git
 cd ble-scanner-node
 
 # Instalar dependencias
-git checkout hybrid
 npm install
 
 # Crear .env
@@ -306,47 +305,47 @@ vi .env
 
 #Presionar i
 #pegar 
-# Rango de escaneo en metros (solo detectar beacons dentro de este rango)
-SCAN_RANGE=10
+    # Rango de escaneo en metros (solo detectar beacons dentro de este rango)
+    SCAN_RANGE=10
 
-# Tiempo de gracia en segundos antes de cerrar un evento (debounce)
-DEBOUNCE_TIME=60
+    # Tiempo de gracia en segundos antes de cerrar un evento (debounce)
+    DEBOUNCE_TIME=60
 
-# Tiempo máximo sin detectar un beacon antes de cerrar automáticamente su evento (en segundos)
-BEACON_TIMEOUT=300
+    # Tiempo máximo sin detectar un beacon antes de cerrar automáticamente su evento (en segundos)
+    BEACON_TIMEOUT=300
 
-# Prefijo MAC de los beacons a procesar (solo estos serán guardados)
-TARGET_MAC_PREFIX=bc:57:29
+    # Prefijo MAC de los beacons a procesar (solo estos serán guardados)
+    TARGET_MAC_PREFIX=bc:57:29
 
-# Identificador de la unidad/dispositivo scanner
-UNIT=TEST_UNIT
+    # Identificador de la unidad/dispositivo scanner
+    UNIT=TEST_UNIT
 
-# Configuración de API
-API_BASE_URL=http://172.236.110.18:3001/api/v1
+    # Configuración de API
+    API_BASE_URL=http://172.236.110.18:3001/api/v1
 
-# Configuración de sincronización
-SYNC_INTERVAL=30000
-INITIAL_SYNC_DELAY=10000
-SKIP_INTERNET_CHECK=false
+    # Configuración de sincronización
+    SYNC_INTERVAL=30000
+    INITIAL_SYNC_DELAY=10000
+    SKIP_INTERNET_CHECK=false
 
-# Configuración de base de datos
-DB_FILE=beacons.db
+    # Configuración de base de datos
+    DB_FILE=beacons.db
 
-# Configuración del servidor web
-WEB_PORT=3000
+    # Configuración del servidor web
+    WEB_PORT=3000
 
-# Configuración de logging (opcional)
-LOG_LEVEL=info
-NODE_ENV=production
+    # Configuración de logging (opcional)
+    LOG_LEVEL=info
+    NODE_ENV=production
 
-# Variables para MQTT y WiFi
-MQTT_COMPANY=gunjop
-MQTT_BROKER=mqtt://localhost:1883
-MQTT_USERNAME=porvenir
-MQTT_PASSWORD=porvenir123
-MQTT_INTERVAL=60000
-WIFI_PORT=3030
-WIFI_DB_FILE=wifi_status.db
+    # Variables para MQTT y WiFi
+    MQTT_COMPANY=gunjop
+    MQTT_BROKER=mqtt://localhost:1883
+    MQTT_USERNAME=porvenir
+    MQTT_PASSWORD=porvenir123
+    MQTT_INTERVAL=60000
+    WIFI_PORT=3030
+    WIFI_DB_FILE=wifi_status.db
 
 #presioanr esc dos veces
 
@@ -355,7 +354,7 @@ WIFI_DB_FILE=wifi_status.db
 pm2 start ecosystem.config.js
 
 # O si solo quieres levantar la WEB por separado:
-pm2 start web-viewer.js --name web-viewer
+# pm2 start web-viewer.js --name web-viewer
 
 # 5. Guardar lista de procesos (CRÍTICO para persistencia)
 pm2 save
@@ -396,8 +395,8 @@ Si quieres que la Tablet abra automáticamente la web al encenderse, configurare
 
 ### 1. Instalar Chromium
 ```bash
-apt-get update
-apt-get install -y chromium
+# apt-get update
+# apt-get install -y chromium
 ```
 
 ### 2. Crear el servicio de Kiosk
@@ -429,7 +428,7 @@ ExecStart=/usr/bin/chromium \
   --window-size=1280,800 \
   --disable-infobars \
   --user-data-dir=/mnt/storage/chromium-profile \
-  http://localhost:3000
+  http://localhost:3001
 
 Restart=always
 RestartSec=10
@@ -459,7 +458,7 @@ systemctl start chromium-kiosk.service
 
 Si necesitas detener o reiniciar los servicios manualmente, usa estos comandos:
 
-### 1. Controlar la Aplicación (PM2)
+<!-- ### 1. Controlar la Aplicación (PM2)
 ```bash
 # Ver estado de todo
 pm2 status
@@ -487,7 +486,7 @@ systemctl start chromium-kiosk.service
 systemctl restart chromium-kiosk.service
 
 # Ver logs de error si no abre
-journalctl -u chromium-kiosk.service -f
+journalctl -u chromium-kiosk.service -f -->
 ```
 
 ### 3. Desactivar arranque automático (Permanentemente)
@@ -548,10 +547,10 @@ vi .env
 
 #Presionar i
 #pegar 
-VITE_APP_API_URL=http://172.235.137.146:3001/api/v1
-VITE_MQTT_URL="ws://paranoid.lat:8093/mqtt"
-VITE_MQTT_USERNAME="nexa.gunjop.tablets"
-VITE_MQTT_PASSWORD="*C8wjJr9jK5fJ1&UL4h2VY5"
+    VITE_APP_API_URL=http://172.235.137.146:3001/api/v1
+    VITE_MQTT_URL="ws://paranoid.lat:8093/mqtt"
+    VITE_MQTT_USERNAME="nexa.gunjop.tablets"
+    VITE_MQTT_PASSWORD="*C8wjJr9jK5fJ1&UL4h2VY5"
 #presioanr esc dos veces
 #luego guardar esribiendo :wq
 
@@ -571,21 +570,21 @@ Si quieres que el modo Kiosk apunte a esta nueva aplicación, actualiza el servi
 
 ```bash
 # Editar el servicio
-vi /etc/systemd/system/chromium-kiosk.service
-```
+# vi /etc/systemd/system/chromium-kiosk.service
+# ```
 
-Cambia la línea `http://localhost:3000` por `http://localhost:3001`:
+# Cambia la línea `http://localhost:3000` por `http://localhost:3001`:
 
-```ini
-# ... dentro de /etc/systemd/system/chromium-kiosk.service
-ExecStart=/usr/bin/chromium \
-  --kiosk \
-  --no-sandbox \
-  --window-position=0,0 \
-  --window-size=1280,800 \
-  --disable-infobars \
-  --user-data-dir=/mnt/storage/chromium-profile \
-  http://localhost:3001
+# ```ini
+# # ... dentro de /etc/systemd/system/chromium-kiosk.service
+# ExecStart=/usr/bin/chromium \
+#   --kiosk \
+#   --no-sandbox \
+#   --window-position=0,0 \
+#   --window-size=1280,800 \
+#   --disable-infobars \
+#   --user-data-dir=/mnt/storage/chromium-profile \
+#   http://localhost:3001
 ```
 
 ### 3. Reiniciar Servicios
