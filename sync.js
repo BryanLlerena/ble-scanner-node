@@ -3,10 +3,7 @@ require('dotenv').config();
 const https = require('https');
 const http = require('http');
 const logger = require('./logger');
-const wifi = require('node-wifi');
-
-// Inicializar módulo wifi
-wifi.init({ iface: null });
+const wifiUtils = require('./wifi-utils');
 
 // Configuración desde variables de entorno
 const UNIT = process.env.UNIT || "TEST_UNIT";
@@ -28,26 +25,14 @@ const DEFAULT_HEADERS = {
   'User-Agent': 'BeaconApp/1.0 (NodeJS)'
 };
 
-function getWifiInfo() {
-  return new Promise((resolve, reject) => {
-    wifi.getCurrentConnections((err, currentConnections) => {
-      if (err) {
-        return reject(err);
-      }
-      if (currentConnections.length > 0) {
-        const { ssid, mac } = currentConnections[0];
-        resolve({ ssid, bssid: mac });
-      } else {
-        resolve({ ssid: null, bssid: null });
-      }
-    });
-  });
+async function getWifiInfo() {
+  return await wifiUtils.getWifiInfo();
 }
 
 // Función para verificar conexión a internet usando DNS lookup
 async function checkInternetConnection() {
   const dns = require('dns');
-  
+
   // Método DNS lookup (más ligero y rápido)
   const dnsTest = () => {
     return new Promise((resolve) => {
@@ -98,7 +83,7 @@ function makeHttpRequest(url, options, data = null) {
     const urlObj = new URL(url);
     const isHttps = urlObj.protocol === 'https:';
     const httpModule = isHttps ? https : http;
-    
+
     const requestOptions = {
       hostname: urlObj.hostname,
       port: urlObj.port || (isHttps ? 443 : 80),
@@ -107,14 +92,14 @@ function makeHttpRequest(url, options, data = null) {
       headers: options.headers || DEFAULT_HEADERS,
       timeout: 10000
     };
-    
+
     const req = httpModule.request(requestOptions, (res) => {
       let responseData = '';
-      
+
       res.on('data', (chunk) => {
         responseData += chunk;
       });
-      
+
       res.on('end', () => {
         resolve({
           ok: res.statusCode >= 200 && res.statusCode < 300,
@@ -123,20 +108,20 @@ function makeHttpRequest(url, options, data = null) {
         });
       });
     });
-    
+
     req.on('error', (error) => {
       reject(error);
     });
-    
+
     req.on('timeout', () => {
       req.destroy();
       reject(new Error('Request timeout'));
     });
-    
+
     if (data) {
       req.write(JSON.stringify(data));
     }
-    
+
     req.end();
   });
 }
@@ -152,21 +137,21 @@ function calculateBeaconStats(rssiArray) {
       duration: 0
     };
   }
-  
+
   const rssiValues = rssiArray.map(entry => entry.rssi);
   const distances = rssiArray.map(entry => entry.distance);
   const timestamps = rssiArray.map(entry => entry.datetime);
-  
+
   const rssi_min = Math.min(...rssiValues);
   const rssi_max = Math.max(...rssiValues);
   const rssi_mean = rssiValues.reduce((a, b) => a + b, 0) / rssiValues.length;
   const distance = distances.reduce((a, b) => a + b, 0) / distances.length;
-  
+
   // Calcular duración desde primera hasta última lectura
   const firstTimestamp = Math.min(...timestamps);
   const lastTimestamp = Math.max(...timestamps);
   const duration = (lastTimestamp - firstTimestamp) / 1000; // en segundos
-  
+
   return {
     rssi_min: Math.round(rssi_min),
     rssi_max: Math.round(rssi_max),
@@ -233,22 +218,22 @@ function convertEventToApiFormat(event, wap) {
   // Parsear arrays RSSI (solo usar datos válidos para estadísticas)
   let validRssiArray = [];
   let discardArray = [];
-  
+
   try {
     if (event.rssi) {
       validRssiArray = JSON.parse(event.rssi);
     }
-    
+
     if (event.rssi_discard) {
-      discardArray= JSON.parse(event.rssi_discard);
+      discardArray = JSON.parse(event.rssi_discard);
     }
   } catch (parseErr) {
     logger.error('Error parseando RSSI:', parseErr);
   }
-  
+
   // Calcular estadísticas solo con datos válidos
   const stats = calculateBeaconStats(validRssiArray);
-  
+
 
   return {
     mac: event.beaconMac,
@@ -271,7 +256,7 @@ function convertEventToApiFormat(event, wap) {
 
 // Generar UUID simple
 function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     const r = Math.random() * 16 | 0;
     const v = c == 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
@@ -293,9 +278,9 @@ async function sendNewBeaconEvents(db) {
       logger.debug('📡 No hay eventos pendientes para enviar');
       return { success: true, sent: 0 };
     }
-    
+
     logger.info(`📡 Enviando ${pendingEvents.length} eventos nuevos...`);
-    
+
     // Convertir a formato API
     const payload = pendingEvents.map((e) => convertEventToApiFormat(e, wifiInfo));
 
@@ -304,19 +289,19 @@ async function sendNewBeaconEvents(db) {
       method: 'POST',
       headers: DEFAULT_HEADERS
     }, payload);
-    
+
     if (response.ok) {
       // Marcar como enviados
       const eventIds = pendingEvents.map(event => event.id);
       await markEventsAsSent(db, eventIds);
-      
+
       logger.info(`✅ ${pendingEvents.length} eventos enviados exitosamente`);
       return { success: true, sent: pendingEvents.length };
     } else {
       logger.error(`❌ Error enviando eventos: HTTP ${response.status}`);
       return { success: false, error: `HTTP ${response.status}`, sent: 0 };
     }
-    
+
   } catch (error) {
     logger.error('❌ Error en sendNewBeaconEvents:', error.message);
     return { success: false, error: error.message, sent: 0 };
@@ -337,21 +322,21 @@ async function updateExistingBeaconEvents(db) {
     if (updateEvents.length === 0) {
       return { success: true, updated: 0 };
     }
-    
+
     logger.info(`🔄 Actualizando ${updateEvents.length} eventos...`);
-    
+
     let successCount = 0;
-    
+
     for (const event of updateEvents) {
       try {
         const payload = convertEventToApiFormat(event, wifiInfo);
         const updateUrl = `${API_ENDPOINTS.BEACON_TRACK_UPDATE}/${event.uuid}`;
-        
+
         const response = await makeHttpRequest(updateUrl, {
           method: 'PUT',
           headers: DEFAULT_HEADERS
         }, payload);
-        
+
         if (response.ok) {
           await markEventsAsSent(db, [event.id]);
           successCount++;
@@ -363,9 +348,9 @@ async function updateExistingBeaconEvents(db) {
         logger.error(`❌ Error actualizando evento ${event.uuid}:`, updateError.message);
       }
     }
-    
+
     return { success: true, updated: successCount };
-    
+
   } catch (error) {
     logger.error('❌ Error en updateExistingBeaconEvents:', error.message);
     return { success: false, error: error.message, updated: 0 };
@@ -375,7 +360,7 @@ async function updateExistingBeaconEvents(db) {
 // Función principal de sincronización
 async function syncBeaconEvents(db) {
   logger.info('🌐 Iniciando sincronización con API...');
-  
+
   // Verificar conexión a internet (opcional)
   if (!SKIP_INTERNET_CHECK) {
     const hasInternet = await checkInternetConnection();
@@ -386,29 +371,29 @@ async function syncBeaconEvents(db) {
   } else {
     logger.warn('⚠️ Verificación de internet deshabilitada - intentando sincronización directa');
   }
-  
+
   try {
     // Enviar eventos nuevos
     const newResults = await sendNewBeaconEvents(db);
-    
+
     // Actualizar eventos existentes
     const updateResults = await updateExistingBeaconEvents(db);
-    
+
     const totalProcessed = newResults.sent + updateResults.updated;
-    
+
     if (totalProcessed > 0) {
       logger.info(`✅ Sincronización completada: ${newResults.sent} nuevos, ${updateResults.updated} actualizados`);
     } else {
       logger.debug('📡 Sincronización completada: No hay datos pendientes');
     }
-    
+
     return {
       success: true,
       newEvents: newResults.sent,
       updatedEvents: updateResults.updated,
       total: totalProcessed
     };
-    
+
   } catch (error) {
     logger.error('❌ Error en sincronización:', error.message);
     return { success: false, error: error.message };

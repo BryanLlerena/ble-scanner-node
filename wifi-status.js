@@ -1,15 +1,12 @@
 require('dotenv').config();
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
-const wifi = require('node-wifi');
+const wifiUtils = require('./wifi-utils');
 const { execSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.WIFI_PORT || 3030;
 const DB_FILE = process.env.WIFI_DB_FILE || 'wifi_status.db';
-
-// Inicializar node-wifi
-wifi.init({ iface: null });
 
 // Conectar a la base de datos
 const db = new sqlite3.Database(DB_FILE);
@@ -28,26 +25,7 @@ db.run(`
 
 
 async function getWifiStatus() {
-  return new Promise((resolve) => {
-    wifi.getCurrentConnections((err, connections) => {
-      if (err || !connections.length) {
-        resolve({
-          timestamp: new Date().toISOString(),
-          ssid: null,
-          bssid: null,
-          status: 'disconnected'
-        });
-      } else {
-        const { ssid, mac: bssid } = connections[0];
-        resolve({
-          timestamp: new Date().toISOString(),
-          ssid,
-          bssid,
-          status: 'connected'
-        });
-      }
-    });
-  });
+  return await wifiUtils.getWifiStatus();
 }
 
 // Endpoint para borrar todos los registros de la tabla wifi_status
