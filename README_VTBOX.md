@@ -248,75 +248,35 @@ cd /mnt/storage/www/ble-scanner-node
 node test-noble.js
 ```
 
-## Paso 9: Persistencia del Bluetooth (Systemd)
-```bash
-cat > /usr/bin/init-bluetooth.sh << 'EOF'
-#!/bin/sh
-set -x 
-# LOG file en /tmp
-LOG=/tmp/bluetooth-init.log
-echo "Starting Bluetooth init at $(date). Waiting 30s..." > $LOG
+## Step 9: Bluetooth Persistence (Hybrid V2 - Final)
 
-# 0. ESPERA INICIAL (30 segundos para que todo el sistema arranque)
-sleep 30
+This method forces a fresh start of the Bluetooth service on every boot using PM2. We use a "Long-Running Trigger" so PM2 always sees it as ONLINE and restarts it automatically.
 
-# 1. Limpiar proceso anterior
-echo "Killing old hciattach..." >> $LOG
-/usr/bin/killall hciattach >> $LOG 2>&1 || true
-sleep 1
-
-# 2. Adjuntar el dispositivo (CON RUTA COMPLETA)
-echo "Running hciattach..." >> $LOG
-/usr/bin/hciattach /dev/ttyHS0 qca 115200 flow >> $LOG 2>&1
-RET=$?
-echo "hciattach returned code: $RET" >> $LOG
-
-# 3. Esperar a que cargue el firmware
-echo "Waiting 5s for firmware..." >> $LOG
-sleep 5
-
-# 4. Levantar interfaz
-echo "Bringing up hci0..." >> $LOG
-/usr/bin/hciconfig hci0 up >> $LOG 2>&1
-/usr/bin/hciconfig hci0 piscan >> $LOG 2>&1
-
-# 5. Estado final y REINICIAR PM2
-/usr/bin/hciconfig -a >> $LOG 2>&1
-
-echo "Restarting PM2 apps..." >> $LOG
-export PM2_HOME="/mnt/storage/.pm2"
-/usr/bin/pm2 restart all >> $LOG 2>&1
-
-echo "Finished at $(date)" >> $LOG
-exit 0
-EOF
-```
-
-**1. Crear el Script Robusto (init-bluetooth.sh):**
+### 1. Create Robust Init Script (init-bluetooth.sh)
 
 ```bash
 cat > /usr/bin/init-bluetooth.sh << 'EOF'
 #!/bin/sh
 LOG=/tmp/bluetooth-init.log
-echo "Starting Bluetooth init via PM2 (v4) at $(date)" > $LOG
+echo "Starting Bluetooth init (v6) at $(date)" > $LOG
 
-# 1. DESBLOQUEO PREVENTIVO
+# 1. Unblock RFKill (Relative path)
 echo "Unblocking all radio..." >> $LOG
-/usr/sbin/rfkill unblock all >> $LOG 2>&1
+rfkill unblock all >> $LOG 2>&1 || true
 sleep 1
 
-# 2. Limpieza
+# 2. Cleanup old processes
 echo "Cleaning previous instances..." >> $LOG
 killall hciattach > /dev/null 2>&1 || true
 sleep 3
 
-# 3. Adjuntar
+# 3. Attach UART (Background process)
 echo "Running hciattach..." >> $LOG
 /usr/bin/hciattach /dev/ttyHS0 qca 115200 flow >> $LOG 2>&1 &
 ATTACH_PID=$!
 echo "hciattach started with PID $ATTACH_PID" >> $LOG
 
-# 4. BUCLE DE ESPERA (30s)
+# 4. Wait Loop (30s timeout)
 echo "Waiting for hci0..." >> $LOG
 COUNT=0
 while [ $COUNT -lt 30 ]; do
@@ -329,34 +289,35 @@ while [ $COUNT -lt 30 ]; do
     echo -n "." >> $LOG
 done
 
-# 5. DIAGNÓSTICO
+# 5. Fallback Diagnosis
 if [ $COUNT -ge 30 ]; then
-    echo "TIMEOUT: hci0 not found via script. Running force UP..." >> $LOG
+    echo "TIMEOUT: hci0 not found. Forcing UP..." >> $LOG
 fi
 
-# 6. LEVANTAR INTERFAZ
+# 6. Bring Interface UP
 /usr/bin/hciconfig hci0 up >> $LOG 2>&1
 /usr/bin/hciconfig hci0 piscan >> $LOG 2>&1
 
-# 7. Verificación
+# 7. Final Verification
 echo "Final device status:" >> $LOG
 /usr/bin/hciconfig -a >> $LOG 2>&1
 
-# 8. Reiniciar App PM2
-echo "Restarting PM2 process..." >> $LOG
+# 8. Restart Application
+echo "Restarting PM2 process (ble-scanner)..." >> $LOG
 export PM2_HOME="/mnt/storage/.pm2"
-/usr/bin/pm2 restart ble-scanner-node >> $LOG 2>&1
+# Restart the specific app name
+/usr/bin/pm2 restart ble-scanner >> $LOG 2>&1
 
 echo "Finished at $(date)" >> $LOG
 exit 0
 EOF
 
-# ¡IMPORTANTE! Dar permisos de ejecución:
+# Grant execution permissions
 chmod +x /usr/bin/init-bluetooth.sh
 ```
 
- **2. Crear el Servicio de Systemd (Wrapper):**
-Este servicio ejecutará el script anterior.
+### 2. Create Systemd Service Wrapper
+
 ```bash
 cat > /etc/systemd/system/attach-bluetooth.service << 'EOF'
 [Unit]
@@ -371,41 +332,57 @@ ExecStart=/usr/bin/init-bluetooth.sh
 WantedBy=multi-user.target
 EOF
 
-# Recargar Systemd (pero NO habilitar):
+# Reload Systemd and DISABLE auto-start (managed by PM2)
 systemctl daemon-reload
 systemctl disable attach-bluetooth.service
 ```
 
-**3. Crear el Gatillo de PM2:**
-Este script encenderá el servicio en el arranque.
+### 3. Create PM2 Trigger Script (Long-Running)
+
+We make the script sleep forever so PM2 sees it as "ONLINE" and always restarts it on boot.
+
 ```bash
 cat > /usr/bin/start-bluetooth-service.sh << 'EOF'
 #!/bin/sh
-echo "PM2 Trigger: Starting Bluetooth Service..."
-systemctl start attach-bluetooth.service
-echo "Service started!"
-exit 0
+echo "PM2 Trigger: RESTARTS Bluetooth Service..."
+# Use RESTART to force execution
+systemctl restart attach-bluetooth.service
+echo "Service restarted! Sleeping to keep process alive..."
+# Sleep forever to keep PM2 happy (Status: ONLINE)
+exec sleep infinity
 EOF
 
-# Dar permisos:
+# Grant execution permissions
 chmod +x /usr/bin/start-bluetooth-service.sh
 ```
 
-**4. Registrar en PM2 (Comando Final):**
-```bash
-# Iniciar el nuevo gatillo:
-pm2 start /usr/bin/start-bluetooth-service.sh --name "bt-trigger" --no-autorestart
+### 4. Register Trigger in PM2
 
-# Guardar para persistencia:
+```bash
+# Delete old process if exists
+pm2 delete bt-trigger 2>/dev/null || true
+
+# Start new trigger process (Standard mode, autoruns on boot)
+pm2 start /usr/bin/start-bluetooth-service.sh --name "bt-trigger"
+
+# Save process list
 pm2 save
 ```
 
-**5. Probar:**
-Reinicia (`reboot`). Al volver, PM2 ejecutará el gatillo, este levantará el servicio, y el servicio ejecutará tu script robusto. ¡Listo! 🚀
+### 5. Verification
 
-**3. Verificar:**
-Reinicia (`reboot`). Al volver, PM2 arrancará `bluetooth-init`, configurará el hardware, y luego reiniciará tu app.
-Revisa el log: `cat /tmp/bluetooth-init.log`.   
+After reboot (`reboot`), verify execution:
+
+```bash
+# Check PM2 trigger status (Should be ONLINE)
+pm2 list
+
+# Check internal script log
+cat /tmp/bluetooth-init.log
+
+# Check Bluetooth interface status
+hciconfig -a
+```   
 
 
 ---
