@@ -36,7 +36,7 @@ network={
 
 # RED 2: brll-ryu (Prioridad Media)
 network={
-    ssid="brll-ryu"
+    ssid="UNDIS"
     psk="12345678"
     key_mgmt=WPA-PSK
     priority=5
