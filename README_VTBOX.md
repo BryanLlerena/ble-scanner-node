@@ -28,8 +28,8 @@ update_config=1
 
 # RED 1: Principal (Prioridad Alta)
 network={
-    ssid="GUNJOPERS"
-    psk="Gunjop2023"
+    ssid="UNDIS_FMS_CL"
+    psk="%cerrolindo123%"
     key_mgmt=WPA-PSK
     priority=10
 }
@@ -44,8 +44,8 @@ network={
 
 # RED 3: Respaldo (Prioridad Baja)
 network={
-    ssid="wcv6"
-    psk="123456789"
+    ssid="gunjop"
+    psk="12345678"
     key_mgmt=WPA-PSK
     priority=3
 }
