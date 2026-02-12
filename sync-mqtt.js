@@ -1,3 +1,25 @@
+// Definición global para evitar ReferenceError
+function sendGPSDataToMQTT() {
+  // if (!mqttClient || !mqttClient.connected) return;
+  if (!lastGPSData) return;
+  const payload = {
+    unit: UNIT,
+    timestamp: new Date().toISOString(),
+    gps: lastGPSData
+  };
+  const message = JSON.stringify(payload, null, 2);
+  // Solo imprimir el JSON generado para pruebas
+  console.log('--- JSON generado para GPS MQTT ---');
+  console.log(message);
+  console.log('-----------------------------------');
+  // mqttClient.publish(MQTT_GPS_TOPIC, message, { qos: 0 }, (err) => {
+  //   if (err) {
+  //     logger.error('❌ Error enviando GPS MQTT:', err.message);
+  //   } else {
+  //     logger.info('📡 Enviado datos GPS por MQTT');
+  //   }
+  // });
+}
 // Servicio MQTT para envío de datos de beacons
 require('dotenv').config();
 const mqtt = require('mqtt');
