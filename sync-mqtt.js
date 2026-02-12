@@ -207,13 +207,17 @@ async function sendDataToMQTT() {
       gps: lastGPSData
     };
     const message = JSON.stringify(payload, null, 2);
-    mqttClient.publish(MQTT_GPS_TOPIC, message, { qos: 0 }, (err) => {
-      if (err) {
-        logger.error('❌ Error enviando GPS MQTT:', err.message);
-      } else {
-        logger.info('📡 Enviado datos GPS por MQTT');
-      }
-    });
+    // Solo imprimir el JSON generado para pruebas
+    console.log('--- JSON generado para GPS MQTT ---');
+    console.log(message);
+    console.log('-----------------------------------');
+    // mqttClient.publish(MQTT_GPS_TOPIC, message, { qos: 0 }, (err) => {
+    //   if (err) {
+    //     logger.error('❌ Error enviando GPS MQTT:', err.message);
+    //   } else {
+    //     logger.info('📡 Enviado datos GPS por MQTT');
+    //   }
+    // });
   }
     // Obtener los últimos 5 eventos
   // Enviar ambos datos si están disponibles
@@ -227,13 +231,17 @@ async function sendDataToMQTT() {
       gps: lastGPSData || undefined
     };
     const message = JSON.stringify(payload, null, 2);
-    mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
-      if (err) {
-        logger.error('❌ Error enviando datos combinados MQTT:', err.message);
-      } else {
-        logger.info('📡 Enviado datos combinados por MQTT');
-      }
-    });
+    // Solo imprimir el JSON generado para pruebas
+    console.log('--- JSON generado para MQTT (combinado) ---');
+    console.log(message);
+    console.log('-------------------------------------------');
+    // mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
+    //   if (err) {
+    //     logger.error('❌ Error enviando datos combinados MQTT:', err.message);
+    //   } else {
+    //     logger.info('📡 Enviado datos combinados por MQTT');
+    //   }
+    // });
   }
     const lastEvents = await getLastFiveEvents(db);
 
@@ -254,13 +262,17 @@ async function sendDataToMQTT() {
     // Enviar por MQTT
     const message = JSON.stringify(payload, null, 2);
 
-    mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
-      if (err) {
-        logger.error('❌ Error enviando mensaje MQTT:', err.message);
-      } else {
-        logger.info(`📡 Enviados ${lastEvents.length} eventos por MQTT al topic: ${MQTT_TOPIC}`);
-      }
-    });
+    // Solo imprimir el JSON generado para pruebas
+    console.log('--- JSON generado para MQTT ---');
+    console.log(message);
+    console.log('-------------------------------');
+    // mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
+    //   if (err) {
+    //     logger.error('❌ Error enviando mensaje MQTT:', err.message);
+    //   } else {
+    //     logger.info(`📡 Enviados ${lastEvents.length} eventos por MQTT al topic: ${MQTT_TOPIC}`);
+    //   }
+    // });
 
   } catch (error) {
     logger.error('❌ Error en sendDataToMQTT:', error.message);
