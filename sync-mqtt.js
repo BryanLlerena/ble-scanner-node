@@ -219,83 +219,121 @@ async function sendDataToMQTT() {
       logger.warn('⚠️ No se pudo obtener información WiFi:', wifiErr.message);
     }
 
-  // Enviar datos GPS por MQTT
-  function sendGPSDataToMQTT() {
-    // if (!mqttClient || !mqttClient.connected) return;
-    if (!lastGPSData) return;
-    const payload = {
-      unit: UNIT,
-      timestamp: new Date().toISOString(),
-      gps: lastGPSData
-    };
-    const message = JSON.stringify(payload, null, 2);
-    // Solo imprimir el JSON generado para pruebas
-    console.log('--- JSON generado para GPS MQTT ---');
-    console.log(message);
-    console.log('-----------------------------------');
-    mqttClient.publish(MQTT_GPS_TOPIC, message, { qos: 0 }, (err) => {
-      if (err) {
-        logger.error('❌ Error enviando GPS MQTT:', err.message);
-      } else {
-        logger.info('📡 Enviado datos GPS por MQTT');
-      }
-    });
-  }
-    // Obtener los últimos 5 eventos
-  // Enviar ambos datos si están disponibles
-  function sendCombinedDataToMQTT() {
-    // if (!mqttClient || !mqttClient.connected) return;
-    if (!lastBeaconEvents.length && !lastGPSData) return;
-    const payload = {
-      unit: UNIT,
-      timestamp: new Date().toISOString(),
-      beacon: lastBeaconEvents.length ? lastBeaconEvents.map(event => convertEventToMqttFormat(event, { wap: '', wap_mac: '' })) : undefined,
-      gps: lastGPSData || undefined
-    };
-    const message = JSON.stringify(payload, null, 2);
-    // Solo imprimir el JSON generado para pruebas
-    console.log('--- JSON generado para MQTT (combinado) ---');
-    console.log(message);
-    console.log('-------------------------------------------');
-    mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
-      if (err) {
-        logger.error('❌ Error enviando datos combinados MQTT:', err.message);
-      } else {
-        logger.info('📡 Enviado datos combinados por MQTT');
-      }
-    });
-  }
     const lastEvents = await getLastFiveEvents(db);
 
-    if (lastEvents.length === 0) {
-      logger.debug('📡 No hay eventos para enviar por MQTT');
+    // Unificar el envío: beacon, gps o ambos
+    if (!lastEvents.length && !lastGPSData) {
+      logger.debug('📡 No hay datos beacon ni GPS para enviar por MQTT');
       return;
     }
 
-    // Convertir eventos al formato API
     const payload = {
       unit: UNIT,
       timestamp: new Date().toISOString(),
-      count: lastEvents.length,
-      wap_mac: wifiInfo.wap_mac,
-      events: lastEvents.map(event => convertEventToMqttFormat(event, wifiInfo))
+      beacon: lastEvents.length ? lastEvents.map(event => convertEventToMqttFormat(event, wifiInfo)) : undefined,
+      gps: lastGPSData || undefined
     };
 
-    // Enviar por MQTT
     const message = JSON.stringify(payload, null, 2);
-
-    // Solo imprimir el JSON generado para pruebas
-    console.log('--- JSON generado para MQTT ---');
-    console.log(message);
-    console.log('-------------------------------');
     mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
       if (err) {
-        logger.error('❌ Error enviando mensaje MQTT:', err.message);
+        logger.error('❌ Error enviando datos unificados MQTT:', err.message);
       } else {
-        logger.info(`📡 Enviados ${lastEvents.length} eventos por MQTT al topic: ${MQTT_TOPIC}`);
+        logger.info('📡 Enviado datos unificados por MQTT');
       }
     });
+  } catch (error) {
+    logger.error('❌ Error en sendDataToMQTT:', error.message);
+  }
+}
 
+// Inicializar base de datos
+function initDatabase() {
+  return new Promise((resolve, reject) => {
+    db = new sqlite3.Database(DB_FILE, (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      logger.info('📊 Base de datos conectada para MQTT');
+      resolve(db);
+    });
+  });
+}
+
+// Inicializar cliente MQTT
+function initMQTT() {
+  return new Promise((resolve, reject) => {
+    logger.info(`📡 Conectando a MQTT broker: ${MQTT_BROKER}`);
+
+    mqttClient = mqtt.connect(MQTT_BROKER, mqttOptions);
+
+    mqttClient.on('connect', () => {
+      logger.info(`✅ Conectado a MQTT broker con ID: ${MQTT_CLIENT_ID}`);
+      logger.info(`📡 Topic de envío: ${MQTT_TOPIC}`);
+      resolve(mqttClient);
+    });
+
+    mqttClient.on('error', (err) => {
+      logger.error('❌ Error MQTT:', err.message);
+      reject(err);
+    });
+
+    mqttClient.on('disconnect', () => {
+      logger.warn('⚠️ Desconectado del broker MQTT');
+    });
+
+    mqttClient.on('reconnect', () => {
+      logger.info('🔄 Reconectando al broker MQTT...');
+    });
+
+    mqttClient.on('offline', () => {
+      logger.warn('📡 Cliente MQTT offline');
+    });
+  });
+}
+
+// Función principal para enviar beacon y/o GPS al mismo topic
+async function sendDataToMQTT() {
+  try {
+    if (!mqttClient || !mqttClient.connected) {
+      logger.warn('📡 Cliente MQTT no conectado, saltando envío');
+      return;
+    }
+
+    // Obtener información WiFi
+    let wifiInfo = { wap: "", wap_mac: "" };
+    try {
+      const info = await getWifiInfo();
+      wifiInfo.wap = info.ssid;
+      wifiInfo.wap_mac = info.bssid;
+    } catch (wifiErr) {
+      logger.warn('⚠️ No se pudo obtener información WiFi:', wifiErr.message);
+    }
+
+    const lastEvents = await getLastFiveEvents(db);
+
+    // Unificar el envío: beacon, gps o ambos
+    if (!lastEvents.length && !lastGPSData) {
+      logger.debug('📡 No hay datos beacon ni GPS para enviar por MQTT');
+      return;
+    }
+
+    const payload = {
+      unit: UNIT,
+      timestamp: new Date().toISOString(),
+      beacon: lastEvents.length ? lastEvents.map(event => convertEventToMqttFormat(event, wifiInfo)) : undefined,
+      gps: lastGPSData || undefined
+    };
+
+    const message = JSON.stringify(payload, null, 2);
+    mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
+      if (err) {
+        logger.error('❌ Error enviando datos unificados MQTT:', err.message);
+      } else {
+        logger.info('📡 Enviado datos unificados por MQTT');
+      }
+    });
   } catch (error) {
     logger.error('❌ Error en sendDataToMQTT:', error.message);
   }
@@ -368,18 +406,7 @@ async function startMQTTService() {
     setInterval(() => {
       // Leer GPS
       readGPSData(() => {
-        // Si hay datos de beacon y GPS, enviar ambos
-        if (lastBeaconEvents.length && lastGPSData) {
-          sendCombinedDataToMQTT();
-        } else if (lastBeaconEvents.length) {
-          sendDataToMQTT();
-        } else if (lastGPSData) {
-          // Definir la función antes de llamarla
-          // (La función ya está definida arriba, solo asegúrate que la llamada esté después de la definición)
-          sendGPSDataToMQTT();
-        } else {
-          logger.debug('⏳ No hay datos beacon ni GPS para enviar');
-        }
+        sendDataToMQTT();
       });
     }, 1000);
 
