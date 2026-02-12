@@ -352,6 +352,8 @@ async function startMQTTService() {
         } else if (lastBeaconEvents.length) {
           sendDataToMQTT();
         } else if (lastGPSData) {
+          // Definir la función antes de llamarla
+          // (La función ya está definida arriba, solo asegúrate que la llamada esté después de la definición)
           sendGPSDataToMQTT();
         } else {
           logger.debug('⏳ No hay datos beacon ni GPS para enviar');
