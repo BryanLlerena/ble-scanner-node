@@ -182,10 +182,10 @@ function convertEventToMqttFormat(event, wap) {
 // Enviar datos por MQTT
 async function sendDataToMQTT() {
   try {
-    if (!mqttClient || !mqttClient.connected) {
-      logger.warn('📡 Cliente MQTT no conectado, saltando envío');
-      return;
-    }
+    // if (!mqttClient || !mqttClient.connected) {
+    //   logger.warn('📡 Cliente MQTT no conectado, saltando envío');
+    //   return;
+    // }
 
     // Obtener información WiFi
     let wifiInfo = { wap: "", wap_mac: "" };
@@ -199,7 +199,7 @@ async function sendDataToMQTT() {
 
   // Enviar datos GPS por MQTT
   function sendGPSDataToMQTT() {
-    if (!mqttClient || !mqttClient.connected) return;
+    // if (!mqttClient || !mqttClient.connected) return;
     if (!lastGPSData) return;
     const payload = {
       unit: UNIT,
@@ -222,7 +222,7 @@ async function sendDataToMQTT() {
     // Obtener los últimos 5 eventos
   // Enviar ambos datos si están disponibles
   function sendCombinedDataToMQTT() {
-    if (!mqttClient || !mqttClient.connected) return;
+    // if (!mqttClient || !mqttClient.connected) return;
     if (!lastBeaconEvents.length && !lastGPSData) return;
     const payload = {
       unit: UNIT,
@@ -340,7 +340,7 @@ async function startMQTTService() {
     await initDatabase();
 
     // Inicializar cliente MQTT
-    await initMQTT();
+    // await initMQTT();
 
     // Programar envíos cada segundo
     setInterval(() => {
