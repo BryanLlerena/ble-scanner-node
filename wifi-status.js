@@ -183,33 +183,52 @@ app.get('/api/wifi/history', (req, res) => {
 
 // --- API ENDPOINTS (BLE DATA) ---
 
-// GET /api/ble/recent - Obtener beacons detectados recientemente (útil para "Live View")
+// GET /api/ble/recent - Obtener beacons detectados recientemente (PROMEDIO 30s)
 app.get('/api/ble/recent', (req, res) => {
-  // Retorna los últimos 50 eventos ordenados por fecha descendente
-  // Esto da una idea de qué está "vivo" ahora mismo.
+  // Busca eventos de los últimos 30 segundos
   const query = `
         SELECT beaconMac, distance, rssi, timestamp, eventState 
         FROM beacon_events 
-        ORDER BY timestamp DESC 
-        LIMIT 50
+        WHERE timestamp > datetime('now', '-30 seconds')
+        ORDER BY timestamp DESC
     `;
 
   dbBeacons.all(query, [], (err, rows) => {
     if (err) {
-      // Si la tabla no existe aún (app recién iniciada), retorna array vacío
+      console.error(err);
       return res.json([]);
     }
 
-    // Agrupar por MAC para mostrar solo el último estado de cada uno.
-    // Pero devolver lista plana.
-    const uniqueBeacons = {};
+    const beacons = {};
+
     rows.forEach(row => {
-      if (!uniqueBeacons[row.beaconMac]) {
-        uniqueBeacons[row.beaconMac] = row;
+      if (!beacons[row.beaconMac]) {
+        beacons[row.beaconMac] = {
+          beaconMac: row.beaconMac,
+          lastTimestamp: row.timestamp,
+          lastState: row.eventState,
+          rssiSum: 0,
+          distSum: 0,
+          count: 0
+        };
       }
+      const b = beacons[row.beaconMac];
+      b.rssiSum += (parseInt(row.rssi) || 0);
+      b.distSum += (parseFloat(row.distance) || 0);
+      b.count++;
     });
 
-    res.json(Object.values(uniqueBeacons));
+    // Calcular promedios y formatear
+    const results = Object.values(beacons).map(b => ({
+      beaconMac: b.beaconMac,
+      timestamp: b.lastTimestamp,
+      eventState: b.lastState,
+      rssi: Math.round(b.rssiSum / b.count),      // Promedio RSSI (entero)
+      distance: (b.distSum / b.count).toFixed(2), // Promedio Distancia (2 decimales)
+      samples: b.count                            // Cantidad de muestras usadas
+    }));
+
+    res.json(results);
   });
 });
 

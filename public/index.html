@@ -296,13 +296,13 @@
 
             <!-- BLE Status Card -->
             <div class="card">
-                <h3>Beacons Detectados (En Vivo - Últimos 30s)</h3>
+                <h3>Beacons Detectados (En Vivo - Promedio 30s)</h3>
                 <table>
                     <thead>
                         <tr>
                             <th>MAC</th>
-                            <th>Distancia (cm)</th>
-                            <th>RSSI</th>
+                            <th>Distancia Prom. (cm)</th>
+                            <th>RSSI Prom.</th>
                             <th>Estado</th>
                             <th>Última Señal</th>
                         </tr>
@@ -451,7 +451,7 @@
                     const date = new Date(row.timestamp).toLocaleTimeString();
                     tr.innerHTML = `
                         <td>${row.beaconMac}</td>
-                        <td><b>${row.distance}</b></td>
+                        <td><b>${row.distance}</b> <small>(${row.samples} muestras)</small></td>
                         <td>${row.rssi}</td>
                         <td>${row.eventState || '-'}</td>
                         <td>${date}</td>
