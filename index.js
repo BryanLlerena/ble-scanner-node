@@ -73,11 +73,24 @@ function generateUUID() {
 }
 
 // Calcular distancia basada en RSSI (en Metros)
+// Calcular distancia basada en RSSI (en Centímetros para BD)
 function calculateDistance(rssi, txPower = -59) {
   if (rssi === 0) return -1;
   const n = 2.0;
   const distanceMeters = Math.pow(10, (txPower - rssi) / (10.0 * n));
-  return parseFloat(distanceMeters.toFixed(2));
+  const distanceCm = distanceMeters * 100;
+
+  if (distanceCm < 10) return 10;
+  if (distanceCm > 10000) return 10000;
+
+  return Math.round(distanceCm);
+}
+
+// Helper para tener metros si se necesita
+function calculateDistanceInM(rssi, txPower = -59) {
+  if (rssi === 0) return -1;
+  const n = 2.0;
+  return Math.pow(10, (txPower - rssi) / (10.0 * n));
 }
 
 
@@ -411,7 +424,7 @@ noble.on('discover', peripheral => {
       lastSeen: Date.now()
     });
 
-    logger.info(`🎯 Beacon detectado: ${deviceData.name} ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
+    logger.info(`🎯 Beacon detectado: ${deviceData.name} ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distance}cm`);
   }
 });
 
