@@ -18,7 +18,7 @@
             --success: #22c55e;
             --error: #ef4444;
             --warning: #f59e0b;
-
+            --bg-secondary: #f1f5f9;
         }
 
         .dark-mode {
@@ -28,6 +28,7 @@
             --text: #f1f5f9;
             --text-light: #94a3b8;
             --border: #334155;
+            --bg-secondary: #334155;
         }
 
         body {
@@ -147,6 +148,8 @@
             border-radius: 4px;
             box-sizing: border-box;
             font-size: 1rem;
+            background-color: var(--bg);
+            color: var(--text);
         }
 
         small {
@@ -206,7 +209,7 @@
         }
 
         th {
-            background-color: #f1f5f9;
+            background-color: var(--bg-secondary);
             font-weight: 600;
             color: var(--text-light);
         }
@@ -262,7 +265,7 @@
         }
 
         .stat-card {
-            background: #f1f5f9;
+            background: var(--bg-secondary);
             padding: 1rem;
             border-radius: 6px;
             text-align: center;
