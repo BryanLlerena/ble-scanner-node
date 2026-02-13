@@ -41,7 +41,7 @@ Debe quedar algo así:
 # IP Estática (COMENTAR ESTA LÍNEA)
 # ip addr add 192.168.1.55/24 dev wlan0
 
-# DHCP (DESCOMENTAR ESTA LÍNEA)
+# DHCP (DESCOMENTAR ESTA LÍNEA O AGREGAR SI NO EXISTE)
 dhclient -v wlan0
 ```
 
@@ -53,6 +53,11 @@ Reinicia el servicio de conexión para que tome la nueva red y configuración IP
 
 ```bash
 systemctl restart wifi-autoconnect
+```
+
+Si no ves una IP asignada, ejecuta manualmente:
+```bash
+dhclient -v wlan0
 ```
 
 Verifica que tengas internet:
