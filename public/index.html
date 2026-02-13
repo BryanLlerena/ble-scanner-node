@@ -296,13 +296,13 @@
 
             <!-- BLE Status Card -->
             <div class="card">
-                <h3>Beacons Detectados (En Vivo - Promedio 30s)</h3>
+                <h3>Beacons Detectados (En Vivo - Sin BD)</h3>
                 <table>
                     <thead>
                         <tr>
                             <th>MAC</th>
-                            <th>Distancia Prom. (cm)</th>
-                            <th>RSSI Prom.</th>
+                            <th>Distancia (cm)</th>
+                            <th>RSSI</th>
                             <th>Estado</th>
                             <th>Última Señal</th>
                         </tr>
@@ -358,7 +358,7 @@
                             <th>Fecha</th>
                             <th>MAC</th>
                             <th>Distancia (cm)</th>
-                            <th>RSSI</th>
+                            <th>RSSI Promedio</th>
                             <th>Estado Evento</th>
                         </tr>
                     </thead>
@@ -436,31 +436,39 @@
 
         async function loadLiveBle() {
             try {
-                const res = await fetch('/api/ble/recent');
+                // LEER DEL ARCHIVO JSON GENERADO POR index.js (LIVE DUMP)
+                // Usamos timestamp para evitar caché
+                const res = await fetch('/live_beacons.json?t=' + Date.now());
+                if (!res.ok) throw new Error('No live data');
+
                 const data = await res.json();
                 const tbody = document.getElementById('bleLiveTableBody');
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">No hay beacons activos</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">No hay beacons activos en los últimos segundos</td></tr>';
                     return;
                 }
+
+                // Ordenar por RSSI descendente
+                data.sort((a, b) => b.rssi - a.rssi);
 
                 data.forEach(row => {
                     const tr = document.createElement('tr');
                     const date = new Date(row.timestamp).toLocaleTimeString();
                     tr.innerHTML = `
                         <td>${row.beaconMac}</td>
-                        <td><b>${row.distance}</b> <small>(${row.samples} muestras)</small></td>
+                        <td><b>${row.distance}</b></td>
                         <td>${row.rssi}</td>
-                        <td>${row.eventState || '-'}</td>
+                        <td>${row.eventState || 'active'}</td>
                         <td>${date}</td>
                     `;
                     tbody.appendChild(tr);
                 });
             } catch (e) {
-                console.error(e);
-                document.getElementById('bleLiveTableBody').innerHTML = '<tr><td colspan="5">Error cargando datos</td></tr>';
+                // Si el archivo no existe aún o hay error
+                console.warn('Live view waiting...', e);
+                document.getElementById('bleLiveTableBody').innerHTML = '<tr><td colspan="5">Esperando datos en vivo (Scanner iniciando)...</td></tr>';
             }
         }
 
@@ -518,11 +526,13 @@
                 data.forEach(row => {
                     const tr = document.createElement('tr');
                     const date = new Date(row.timestamp).toLocaleString();
+                    const avgLabel = row.samples ? ` <small class="text-xs">(${row.samples} m.)</small>` : '';
+
                     tr.innerHTML = `
                         <td>${date}</td>
                         <td>${row.beaconMac}</td>
                         <td>${row.distance}</td>
-                        <td>${row.rssi}</td>
+                        <td><b>${row.rssi}</b> ${avgLabel}</td>
                         <td>${row.eventState}</td>
                     `;
                     tbody.appendChild(tr);
@@ -586,7 +596,7 @@
 
         // Init
         loadAllStatus();
-        setInterval(loadAllStatus, 15000); // Auto-refresh status every 15s
+        setInterval(loadAllStatus, 5000); // 5s refresh for live view
     </script>
 </body>
 

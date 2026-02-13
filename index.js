@@ -3,6 +3,7 @@ require('dotenv').config();
 const noble = require('@abandonware/noble');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 // Sincronización ahora manejada por sync-processor.js
 const logger = require('./logger');
@@ -53,17 +54,18 @@ db.serialize(() => {
     manufacturerData TEXT,
     serviceData TEXT
   )`);
-  
+
   db.run(`CREATE INDEX IF NOT EXISTS idx_beacon_mac ON beacon_events(beaconMac)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_event_state ON beacon_events(eventState)`);
-  
-  db.run(`ALTER TABLE beacon_events ADD COLUMN syncStatus TEXT DEFAULT 'pending'`, () => {});
-  db.run(`ALTER TABLE beacon_events ADD COLUMN syncTimestamp DATETIME`, () => {});
-  db.run(`ALTER TABLE beacon_events ADD COLUMN uuid TEXT`, () => {});
+
+  db.run(`ALTER TABLE beacon_events ADD COLUMN syncStatus TEXT DEFAULT 'pending'`, () => { });
+  db.run(`ALTER TABLE beacon_events ADD COLUMN syncTimestamp DATETIME`, () => { });
+  db.run(`ALTER TABLE beacon_events ADD COLUMN uuid TEXT`, () => { });
 });
 
 // Cache temporal para dispositivos detectados
 const detectedDevicesCache = new Map();
+const liveBeaconsMap = new Map();
 
 // Generar UUID usando librería uuid + nombre de unidad
 function generateUUID() {
@@ -76,10 +78,10 @@ function calculateDistance(rssi, txPower = -59) {
   const n = 2.0;
   const distanceMeters = Math.pow(10, (txPower - rssi) / (10.0 * n));
   const distanceCm = distanceMeters * 100;
-  
+
   if (distanceCm < 10) return 10;
   if (distanceCm > 10000) return 10000;
-  
+
   return Math.round(distanceCm);
 }
 
@@ -94,16 +96,16 @@ function saveBeaconEvent(deviceData) {
   const timestamp = new Date().toISOString();
   const eventUuid = generateUUID();
   logger.info(`💾 Guardando nuevo evento para beacon: ${deviceData.mac}`, { uuid: eventUuid });
-  
+
   const rssiEntry = {
     rssi: deviceData.rssi || 0,
     datetime: Date.now(),
     distance: deviceData.distanceInM
   };
-  
+
   const rssi = deviceData.distanceInM <= SCAN_RANGE ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
   const rssi_discard = deviceData.distanceInM > SCAN_RANGE ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
-  
+
   db.run(
     `INSERT INTO beacon_events (deviceId, beaconMac, name, rssi, rssi_discard, timestamp, type, uuid, major, minor, txPower, namespace, instance, distance, distanceInM, eventState, f_inicio, f_final, unit, manufacturerData, serviceData, syncStatus) 
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, 'pending')`,
@@ -145,7 +147,7 @@ function saveBeaconEvent(deviceData) {
 function updateBeaconEvent(deviceData, eventId) {
   const timestamp = new Date().toISOString();
   logger.debug(`🔄 Actualizando evento ${eventId} para beacon: ${deviceData.mac}`);
-  
+
   // Primero obtener arrays actuales para agregar nueva entrada
   db.get(
     `SELECT rssi, rssi_discard FROM beacon_events WHERE id = ?`,
@@ -155,11 +157,11 @@ function updateBeaconEvent(deviceData, eventId) {
         logger.error('❌ Error obteniendo arrays actuales:', err);
         return;
       }
-      
+
       // Parsear arrays actuales (o crear vacíos si es NULL)
       let currentRssiArray = [];
       let currentRssiDiscardArray = [];
-      
+
       try {
         currentRssiArray = row.rssi ? JSON.parse(row.rssi) : [];
         currentRssiDiscardArray = row.rssi_discard ? JSON.parse(row.rssi_discard) : [];
@@ -168,21 +170,21 @@ function updateBeaconEvent(deviceData, eventId) {
         currentRssiArray = [];
         currentRssiDiscardArray = [];
       }
-      
+
       // Crear nueva entrada
       const newRssiEntry = {
         rssi: deviceData.rssi || 0,
         datetime: Date.now(),
         distance: deviceData.distanceInM
       };
-      
+
       // Agregar nueva entrada al array correspondiente según distancia
       if (deviceData.distanceInM <= SCAN_RANGE) {
         currentRssiArray.push(newRssiEntry);
       } else {
         currentRssiDiscardArray.push(newRssiEntry);
       }
-      
+
       // Actualizar evento con arrays actualizados
       db.run(
         `UPDATE beacon_events SET rssi = ?, rssi_discard = ?, timestamp = ?, distance = ?, distanceInM = ?, 
@@ -196,10 +198,10 @@ function updateBeaconEvent(deviceData, eventId) {
          END
          WHERE id = ?`,
         [
-          JSON.stringify(currentRssiArray), 
-          JSON.stringify(currentRssiDiscardArray), 
-          timestamp, 
-          deviceData.distance, 
+          JSON.stringify(currentRssiArray),
+          JSON.stringify(currentRssiDiscardArray),
+          timestamp,
+          deviceData.distance,
           deviceData.distanceInM,
           deviceData.distanceInM, // Parámetro para comparación
           SCAN_RANGE, // Rango válido
@@ -222,7 +224,7 @@ function updateBeaconEvent(deviceData, eventId) {
 // Función para cerrar evento
 function closeBeaconEvent(eventId, deviceMac) {
   logger.info(`🔒 Cerrando evento ${eventId} para beacon: ${deviceMac}`);
-  
+
   db.run(
     `UPDATE beacon_events SET eventState = 'closed', syncStatus = CASE 
        WHEN syncStatus = 'sent' THEN 'updated' 
@@ -268,7 +270,7 @@ function getOpenEventByMac(mac, callback) {
 function closeExpiredBeaconEvents() {
   const now = Date.now();
   logger.debug('🕐 Verificando beacons expirados...');
-  
+
   // Obtener todos los eventos abiertos
   db.all(
     `SELECT id, beaconMac, f_final FROM beacon_events WHERE eventState = 'open'`,
@@ -277,21 +279,21 @@ function closeExpiredBeaconEvents() {
         logger.error('❌ Error obteniendo eventos abiertos:', err);
         return;
       }
-      
+
       if (openEvents.length === 0) {
         logger.debug('📋 No hay eventos abiertos para verificar');
         return;
       }
-      
+
       logger.debug(`📋 Verificando ${openEvents.length} eventos abiertos...`);
-      
+
       openEvents.forEach(event => {
         const lastFinalTime = new Date(event.f_final).getTime();
-        
+
         // Si no hay registro de última vez visto, usar f_final del evento
         const timeToCheck = lastFinalTime;
         const timeSinceLastSeen = (now - timeToCheck) / 1000; // en segundos
-        
+
         if (timeSinceLastSeen > BEACON_TIMEOUT) {
           logger.warn(`⏰ Beacon ${event.beaconMac} perdido por ${Math.round(timeSinceLastSeen)}s - cerrando evento ${event.id}`);
           closeBeaconEvent(event.id, event.beaconMac);
@@ -306,23 +308,23 @@ function closeExpiredBeaconEvents() {
 // Parsear iBeacon
 function parseIBeacon(manufacturerData) {
   if (!manufacturerData || manufacturerData.length < 25) return null;
-  
-  if (manufacturerData[0] === 0x4c && manufacturerData[1] === 0x00 && 
-      manufacturerData[2] === 0x02 && manufacturerData[3] === 0x15) {
-    
+
+  if (manufacturerData[0] === 0x4c && manufacturerData[1] === 0x00 &&
+    manufacturerData[2] === 0x02 && manufacturerData[3] === 0x15) {
+
     const uuidArr = manufacturerData.slice(4, 20);
-    const uuid = `${uuidArr.slice(0,4).map(b=>b.toString(16).padStart(2,'0')).join('')}-`+
-      `${uuidArr.slice(4,6).map(b=>b.toString(16).padStart(2,'0')).join('')}-`+
-      `${uuidArr.slice(6,8).map(b=>b.toString(16).padStart(2,'0')).join('')}-`+
-      `${uuidArr.slice(8,10).map(b=>b.toString(16).padStart(2,'0')).join('')}-`+
-      `${uuidArr.slice(10,16).map(b=>b.toString(16).padStart(2,'0')).join('')}`;
-    
+    const uuid = `${uuidArr.slice(0, 4).map(b => b.toString(16).padStart(2, '0')).join('')}-` +
+      `${uuidArr.slice(4, 6).map(b => b.toString(16).padStart(2, '0')).join('')}-` +
+      `${uuidArr.slice(6, 8).map(b => b.toString(16).padStart(2, '0')).join('')}-` +
+      `${uuidArr.slice(8, 10).map(b => b.toString(16).padStart(2, '0')).join('')}-` +
+      `${uuidArr.slice(10, 16).map(b => b.toString(16).padStart(2, '0')).join('')}`;
+
     const major = (manufacturerData[20] << 8) | manufacturerData[21];
     const minor = (manufacturerData[22] << 8) | manufacturerData[23];
-    
+
     const txPowerRaw = manufacturerData[24];
     const txPower = txPowerRaw > 127 ? txPowerRaw - 256 : txPowerRaw;
-    
+
     return { type: 'iBeacon', uuid, major, minor, txPower };
   }
   return null;
@@ -331,7 +333,7 @@ function parseIBeacon(manufacturerData) {
 // Parsear Eddystone
 function parseEddystone(serviceData) {
   if (!serviceData) return null;
-  
+
   // Buscar el servicio Eddystone (FEAA)
   for (let uuid in serviceData) {
     if (uuid.toLowerCase().includes('feaa')) {
@@ -349,15 +351,15 @@ function parseEddystone(serviceData) {
 // Procesar datos de beacon
 function processDevice(peripheral) {
   let beaconInfo = parseIBeacon(peripheral.advertisement.manufacturerData);
-  
+
   if (!beaconInfo) {
     beaconInfo = parseEddystone(peripheral.advertisement.serviceData);
   }
-  
+
   const txPower = beaconInfo?.txPower || -59;
   const distance = calculateDistance(peripheral.rssi || -100, txPower);
   const distanceInM = calculateDistanceInM(peripheral.rssi || -100, txPower);
-  
+
   return {
     deviceId: peripheral.id,
     name: peripheral.advertisement.localName || null,
@@ -372,9 +374,9 @@ function processDevice(peripheral) {
     instance: beaconInfo?.instance || null,
     distance: distance,
     distanceInM: distanceInM,
-    manufacturerData: peripheral.advertisement.manufacturerData ? 
+    manufacturerData: peripheral.advertisement.manufacturerData ?
       peripheral.advertisement.manufacturerData.toString('hex') : null,
-    serviceData: peripheral.advertisement.serviceData ? 
+    serviceData: peripheral.advertisement.serviceData ?
       JSON.stringify(peripheral.advertisement.serviceData) : null,
     isBeacon: !!beaconInfo
   };
@@ -393,7 +395,7 @@ noble.on('stateChange', state => {
 
 noble.on('discover', peripheral => {
   const deviceData = processDevice(peripheral);
-  
+
   // Debug: Mostrar todos los dispositivos BLE detectados (controlado por variable de entorno)
   if (DEBUG_DEVICES) {
     logger.debug(`🔍 DEBUG - Dispositivo detectado:`);
@@ -408,11 +410,17 @@ noble.on('discover', peripheral => {
     logger.debug(`   Cumple MAC filter: ${deviceData.mac.startsWith(TARGET_MAC_PREFIX)}`);
     logger.debug('   ---');
   }
-  
+
   // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
   if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
     detectedDevicesCache.set(deviceData.deviceId, deviceData);
-    
+
+    // Actualizar mapa en vivo (sin filtro de distancia, solo MAC)
+    liveBeaconsMap.set(deviceData.mac, {
+      ...deviceData,
+      lastSeen: Date.now()
+    });
+
     logger.info(`🎯 Beacon detectado: ${deviceData.name} ${deviceData.type} | MAC=${deviceData.mac} | RSSI=${deviceData.rssi} | Distancia=${deviceData.distanceInM.toFixed(2)}m`);
   }
 });
@@ -422,7 +430,7 @@ function processDetectedDevices() {
   if (detectedDevicesCache.size === 0) return;
 
   logger.debug(`📊 Procesando ${detectedDevicesCache.size} dispositivos acumulados...`);
-  
+
   for (const [deviceId, device] of detectedDevicesCache) {
     if (device.isBeacon && device.mac.startsWith(TARGET_MAC_PREFIX)) {
       getOpenEventByMac(device.mac, (err, currentEvent) => {
@@ -438,7 +446,7 @@ function processDetectedDevices() {
             updateBeaconEvent(device, currentEvent.id);
           } else {
             closeBeaconEvent(currentEvent.id, device.mac);
-            if(device.distanceInM <= SCAN_RANGE){
+            if (device.distanceInM <= SCAN_RANGE) {
               saveBeaconEvent(device);
             }
           }
@@ -448,7 +456,7 @@ function processDetectedDevices() {
       });
     }
   }
-  
+
   // Limpiar cache después de procesar
   detectedDevicesCache.clear();
   logger.debug('✅ Dispositivos procesados y cache limpiado');
@@ -473,3 +481,34 @@ process.on('SIGINT', () => {
   noble.stopScanning();
   process.exit();
 });
+
+// --- LIVE DUMP LOOP ---
+const LIVE_DUMP_FILE = path.join(__dirname, 'public', 'live_beacons.json');
+if (!fs.existsSync(path.join(__dirname, 'public'))) {
+  try { fs.mkdirSync(path.join(__dirname, 'public')); } catch (e) { }
+}
+
+setInterval(() => {
+  const now = Date.now();
+  const liveList = [];
+
+  // Filtrar y limpiar mapa
+  for (const [mac, device] of liveBeaconsMap) {
+    if (now - device.lastSeen > 10000) { // 10s timeout
+      liveBeaconsMap.delete(mac);
+    } else {
+      liveList.push({
+        beaconMac: device.mac,
+        rssi: device.rssi,
+        distance: device.distanceInM.toFixed(2),
+        eventState: 'active', // Simulado para compatibilidad
+        timestamp: new Date(device.lastSeen).toISOString(),
+        txPower: device.txPower
+      });
+    }
+  }
+
+  fs.writeFile(LIVE_DUMP_FILE, JSON.stringify(liveList, null, 2), (err) => {
+    if (err) console.error('Error writing live dump:', err.message);
+  });
+}, 2000); // Actualizar archivo cada 2s
