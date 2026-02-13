@@ -46,22 +46,6 @@ module.exports = {
       time: true
     },
     {
-      name: 'config-server',
-      script: 'config-server.js',
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '256M',
-      env: {
-        NODE_ENV: 'production',
-        CONFIG_PORT: 3030
-      },
-      error_file: './logs/config-server-err.log',
-      out_file: './logs/config-server-out.log',
-      log_file: './logs/config-server-combined.log',
-      time: true
-    },
-    {
       name: 'wifi-status',
       script: 'wifi-status.js',
       instances: 1,
