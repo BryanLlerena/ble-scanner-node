@@ -456,7 +456,7 @@
                 data.forEach(row => {
                     const tr = document.createElement('tr');
                     const date = new Date(row.timestamp).toLocaleTimeString();
-                    const distance = parseFloat(row.distance).toFixed(2);
+                    const distance = (parseFloat(row.distance) / 100).toFixed(2);
                     tr.innerHTML = `
                         <td>${row.beaconMac}</td>
                         <td><b>${distance}</b></td>
@@ -529,7 +529,7 @@
                     const date = new Date(row.timestamp).toLocaleString();
                     const avgText = row.avgRssi ? `<span style="font-size:0.8rem; color:#64748b;">(Avg: ${row.avgRssi})</span>` : '';
                     const samplesText = row.samples ? `<span style="font-size:0.75rem; color:#94a3b8;">[${row.samples} m.]</span>` : '';
-                    const distance = parseFloat(row.distance).toFixed(2);
+                    const distance = (parseFloat(row.distance) / 100).toFixed(2);
 
                     tr.innerHTML = `
                         <td>${date}</td>
