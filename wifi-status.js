@@ -17,6 +17,7 @@ app.use(express.static('public')); // Servir archivos estáticos desde 'public'
 const PORT = process.env.WIFI_PORT || 3035;
 const DB_FILE = process.env.WIFI_DB_FILE || 'wifi_status.db';
 const ENV_FILE = path.join(__dirname, '.env');
+const BEACONS_DB_FILE = process.env.DB_FILE || 'beacons.db';
 
 // Configuración MQTT
 const UNIT = process.env.UNIT || "TEST_UNIT";
@@ -27,7 +28,7 @@ const MQTT_PASSWORD = process.env.MQTT_PASSWORD || null;
 const MQTT_TOPIC = `${COMPANY}/unit/${UNIT.toLowerCase()}/wifi`;
 const MQTT_CLIENT_ID = `wifi_${uuidv4()}_${UNIT}`;
 
-// Conectar a la base de datos
+// Conectar a la base de datos WiFi
 const db = new sqlite3.Database(DB_FILE);
 
 db.run(`
@@ -40,6 +41,12 @@ db.run(`
     internet INTEGER
   )
 `);
+
+// Conectar a la base de datos Beacons (SCANNER)
+const dbBeacons = new sqlite3.Database(BEACONS_DB_FILE, sqlite3.OPEN_READONLY, (err) => {
+  if (err) console.error('Error al conectar con beacons.db:', err.message);
+  else console.log('✅ Conectado a beacons.db para lectura');
+});
 
 // --- FUNCIONES AUXILIARES (.ENV) ---
 function parseEnv(content) {
@@ -171,6 +178,57 @@ app.get('/api/wifi/history', (req, res) => {
     } else {
       res.json(rows);
     }
+  });
+});
+
+// --- API ENDPOINTS (BLE DATA) ---
+
+// GET /api/ble/recent - Obtener beacons detectados recientemente (útil para "Live View")
+app.get('/api/ble/recent', (req, res) => {
+  // Retorna los últimos 50 eventos ordenados por fecha descendente
+  // Esto da una idea de qué está "vivo" ahora mismo.
+  const query = `
+        SELECT beaconMac, distance, rssi, timestamp, eventState 
+        FROM beacon_events 
+        ORDER BY timestamp DESC 
+        LIMIT 50
+    `;
+
+  dbBeacons.all(query, [], (err, rows) => {
+    if (err) {
+      // Si la tabla no existe aún (app recién iniciada), retorna array vacío
+      return res.json([]);
+    }
+
+    // Agrupar por MAC para mostrar solo el último estado de cada uno.
+    // Pero devolver lista plana.
+    const uniqueBeacons = {};
+    rows.forEach(row => {
+      if (!uniqueBeacons[row.beaconMac]) {
+        uniqueBeacons[row.beaconMac] = row;
+      }
+    });
+
+    res.json(Object.values(uniqueBeacons));
+  });
+});
+
+// GET /api/ble/history - Historial completo de beacons
+app.get('/api/ble/history', (req, res) => {
+  const limit = parseInt(req.query.limit) || 100;
+  const offset = parseInt(req.query.offset) || 0;
+
+  const query = `
+        SELECT * FROM beacon_events 
+        ORDER BY timestamp DESC 
+        LIMIT ? OFFSET ?
+    `;
+
+  dbBeacons.all(query, [limit, offset], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: 'Error reading beacons db' });
+    }
+    res.json(rows);
   });
 });
 

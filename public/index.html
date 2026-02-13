@@ -76,7 +76,7 @@
 
         .view-section {
             display: none;
-            max-width: 900px;
+            max-width: 1000px;
             margin: 0 auto;
         }
 
@@ -103,7 +103,7 @@
             margin-bottom: 1.5rem;
         }
 
-        /* Form Styles (from config page) */
+        /* Form Styles */
         .form-group {
             margin-bottom: 1rem;
         }
@@ -166,7 +166,7 @@
             gap: 1rem;
         }
 
-        /* Table Styles (from history page) */
+        /* Table Styles */
         table {
             width: 100%;
             border-collapse: collapse;
@@ -261,8 +261,9 @@
     <!-- Sidebar -->
     <div class="sidebar">
         <h2>System Dashboard</h2>
-        <div class="menu-item active" onclick="switchView('status')">📡 Estado WiFi</div>
+        <div class="menu-item active" onclick="switchView('status')">📡 Estado Sistema</div>
         <div class="menu-item" onclick="switchView('history')">📜 Historial WiFi</div>
+        <div class="menu-item" onclick="switchView('ble-history')">📶 Historial Beacons</div>
         <div class="menu-item" onclick="switchView('config')">⚙️ Configuración</div>
     </div>
 
@@ -274,6 +275,7 @@
             <div class="header">
                 <h1>Estado del Sistema</h1>
             </div>
+
             <div class="card">
                 <h3>Conexión WiFi Actual</h3>
                 <div class="status-grid">
@@ -292,16 +294,37 @@
                 </div>
             </div>
 
+            <!-- BLE Status Card -->
+            <div class="card">
+                <h3>Beacons Detectados (En Vivo - Últimos 30s)</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>MAC</th>
+                            <th>Distancia (cm)</th>
+                            <th>RSSI</th>
+                            <th>Estado</th>
+                            <th>Última Señal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bleLiveTableBody">
+                        <tr>
+                            <td colspan="5">Cargando...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
             <div class="actions">
-                <button class="btn-primary" onclick="loadCurrentStatus()">Actualizar Ahora</button>
+                <button class="btn-primary" onclick="loadAllStatus()">Actualizar Ahora</button>
             </div>
         </div>
 
-        <!-- HISTORY VIEW -->
+        <!-- WIFI HISTORY VIEW -->
         <div id="view-history" class="view-section">
             <div class="header">
-                <h1>Historial de Conexiones</h1>
-                <button class="btn-danger" onclick="clearHistory()">Borrar Historial</button>
+                <h1>Historial WiFi</h1>
+                <button class="btn-danger" onclick="clearHistory('wifi')">Borrar Historial</button>
             </div>
             <div class="card">
                 <table>
@@ -316,6 +339,32 @@
                     <tbody id="historyTableBody">
                         <tr>
                             <td colspan="4">Cargando...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- BLE HISTORY VIEW -->
+        <div id="view-ble-history" class="view-section">
+            <div class="header">
+                <h1>Historial Beacons</h1>
+                <button class="btn-primary" onclick="loadBleHistory()">Actualizar</button>
+            </div>
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>MAC</th>
+                            <th>Distancia (cm)</th>
+                            <th>RSSI</th>
+                            <th>Estado Evento</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bleHistoryTableBody">
+                        <tr>
+                            <td colspan="5">Cargando...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -347,21 +396,18 @@
     <script>
         // --- NAVIGATION LOGIC ---
         function switchView(viewName) {
-            // Update Menu
             document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
             event.target.classList.add('active');
 
-            // Update View
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.getElementById(`view-${viewName}`).classList.add('active');
 
-            // Load Data
-            if (viewName === 'status') loadCurrentStatus();
+            if (viewName === 'status') loadAllStatus();
             if (viewName === 'history') loadHistory();
+            if (viewName === 'ble-history') loadBleHistory();
             if (viewName === 'config') loadConfig();
         }
 
-        // --- NOTIFICATIONS ---
         function showNotification(message, type = 'success') {
             const notif = document.getElementById('notification');
             notif.textContent = message;
@@ -370,65 +416,120 @@
             setTimeout(() => notif.style.display = 'none', 3000);
         }
 
-        // --- WIFI STATUS LOGIC ---
+        // --- DASHBOARD STATUS (WiFi + BLE Live) ---
+        async function loadAllStatus() {
+            loadCurrentStatus();
+            loadLiveBle();
+        }
+
         async function loadCurrentStatus() {
             try {
                 const res = await fetch('/api/wifi/status');
                 const data = await res.json();
-
                 const statusEl = document.getElementById('current-status');
                 statusEl.textContent = data.status === 'connected' ? 'Conectado' : 'Desconectado';
                 statusEl.style.color = data.status === 'connected' ? 'var(--success)' : 'var(--error)';
-
                 document.getElementById('current-ssid').textContent = data.ssid || '-';
                 document.getElementById('current-bssid').textContent = data.bssid || '-';
+            } catch (e) { console.error(e); }
+        }
+
+        async function loadLiveBle() {
+            try {
+                const res = await fetch('/api/ble/recent');
+                const data = await res.json();
+                const tbody = document.getElementById('bleLiveTableBody');
+                tbody.innerHTML = '';
+
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">No hay beacons activos</td></tr>';
+                    return;
+                }
+
+                data.forEach(row => {
+                    const tr = document.createElement('tr');
+                    const date = new Date(row.timestamp).toLocaleTimeString();
+                    tr.innerHTML = `
+                        <td>${row.beaconMac}</td>
+                        <td><b>${row.distance}</b></td>
+                        <td>${row.rssi}</td>
+                        <td>${row.eventState || '-'}</td>
+                        <td>${date}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
             } catch (e) {
                 console.error(e);
+                document.getElementById('bleLiveTableBody').innerHTML = '<tr><td colspan="5">Error cargando datos</td></tr>';
             }
         }
 
-        // --- WIFI HISTORY LOGIC ---
+        // --- WIFI HISTORY ---
         async function loadHistory() {
             try {
                 const res = await fetch('/api/wifi/history');
                 const data = await res.json();
                 renderHistory(data);
-            } catch (e) {
-                console.error(e);
-            }
+            } catch (e) { console.error(e); }
         }
 
         function renderHistory(rows) {
             const tbody = document.getElementById('historyTableBody');
             tbody.innerHTML = '';
-
             if (rows.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">No hay registros</td></tr>';
                 return;
             }
-
             rows.forEach(row => {
                 const tr = document.createElement('tr');
-                const date = new Date(row.timestamp).toLocaleString('es-PE');
+                const date = new Date(row.timestamp).toLocaleString();
                 const statusClass = row.status === 'connected' ? 'status-connected' : 'status-disconnected';
                 const statusText = row.status === 'connected' ? 'Conectado' : 'Desconectado';
-                const internetText = row.internet ? 'Sí' : 'No';
-
                 tr.innerHTML = `
                     <td>${date}</td>
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     <td>${row.ssid || '-'}</td>
-                    <td>${internetText}</td>
+                    <td>${row.internet ? 'Sí' : 'No'}</td>
                 `;
                 tbody.appendChild(tr);
             });
         }
 
-        async function clearHistory() {
-            if (!confirm('¿Borrar todo el historial?')) return;
-            await fetch('/api/wifi/history', { method: 'DELETE' });
-            loadHistory();
+        async function clearHistory(type) {
+            if (!confirm('¿Borrar historial?')) return;
+            await fetch(`/api/${type}/history`, { method: 'DELETE' });
+            if (type === 'wifi') loadHistory();
             showNotification('Historial borrado');
+        }
+
+        // --- BLE HISTORY ---
+        async function loadBleHistory() {
+            try {
+                const res = await fetch('/api/ble/history?limit=100');
+                const data = await res.json();
+                const tbody = document.getElementById('bleHistoryTableBody');
+                tbody.innerHTML = '';
+
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">No hay registros</td></tr>';
+                    return;
+                }
+
+                data.forEach(row => {
+                    const tr = document.createElement('tr');
+                    const date = new Date(row.timestamp).toLocaleString();
+                    tr.innerHTML = `
+                        <td>${date}</td>
+                        <td>${row.beaconMac}</td>
+                        <td>${row.distance}</td>
+                        <td>${row.rssi}</td>
+                        <td>${row.eventState}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                console.error(e);
+            }
         }
 
         // --- CONFIG LOGIC ---
@@ -443,15 +544,10 @@
         function renderConfigFields(envArray) {
             const container = document.getElementById('fieldsContainer');
             container.innerHTML = '';
-
-            const items = Array.isArray(envArray)
-                ? envArray
-                : Object.entries(envArray).map(([k, v]) => ({ key: k, value: v, description: '' }));
-
+            const items = Array.isArray(envArray) ? envArray : Object.entries(envArray).map(([k, v]) => ({ key: k, value: v, description: '' }));
             items.forEach(item => {
                 const group = document.createElement('div');
                 group.className = 'form-group';
-
                 const label = document.createElement('label');
                 label.textContent = item.key;
                 if (item.description) {
@@ -459,12 +555,10 @@
                     desc.textContent = item.description;
                     label.appendChild(desc);
                 }
-
                 const input = document.createElement('input');
                 input.name = item.key;
                 input.value = item.value;
                 input.dataset.description = item.description || '';
-
                 group.appendChild(label);
                 group.appendChild(input);
                 container.appendChild(group);
@@ -474,32 +568,25 @@
         document.getElementById('configForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const inputs = document.querySelectorAll('#fieldsContainer input');
-            const data = Array.from(inputs).map(inp => ({
-                key: inp.name, value: inp.value, description: inp.dataset.description
-            }));
-
+            const data = Array.from(inputs).map(inp => ({ key: inp.name, value: inp.value, description: inp.dataset.description }));
             try {
-                const res = await fetch('/api/env', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
+                const res = await fetch('/api/env', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
                 if (res.ok) showNotification('Configuración guardada');
                 else showNotification('Error al guardar', 'error');
             } catch (e) { showNotification('Error de conexión', 'error'); }
         });
 
         async function restartServices() {
-            if (!confirm('¿REINICIAR SERVICIOS? Esto interrumpirá la conexión momentáneamente.')) return;
+            if (!confirm('¿REINICIAR SERVICIOS?')) return;
             try {
                 const res = await fetch('/api/restart', { method: 'POST' });
-                if (res.ok) showNotification('Reiniciando servicios... Espere.');
-                else showNotification('Error al reiniciar', 'error');
-            } catch (e) { showNotification('Error de conexión', 'error'); }
+                if (res.ok) showNotification('Reiniciando servicios...');
+            } catch (e) { showNotification('Error', 'error'); }
         }
 
         // Init
-        loadCurrentStatus(); // Load default view data
+        loadAllStatus();
+        setInterval(loadAllStatus, 15000); // Auto-refresh status every 15s
     </script>
 </body>
 
