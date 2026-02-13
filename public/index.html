@@ -295,11 +295,14 @@
     <!-- Main Content -->
     <div class="main-content">
 
+        <div class="header">
+            <h1 id="page-title">Dashboard</h1>
+            <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">🌙</button>
+        </div>
+
         <!-- STATUS VIEW -->
         <div id="view-status" class="view-section active">
-            <div class="header">
-                <h1>Estado del Sistema</h1>
-            </div>
+            <!-- <div class="header"> Removed individual header </div> -->
 
             <div class="card">
                 <h3>Conexión WiFi Actual</h3>
@@ -347,11 +350,11 @@
 
         <!-- WIFI HISTORY VIEW -->
         <div id="view-history" class="view-section">
-            <div class="header">
-                <h1>Historial WiFi</h1>
-                <button class="btn-danger" onclick="clearHistory('wifi')">Borrar Historial</button>
-            </div>
             <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <h3>Historial WiFi</h3>
+                    <button class="btn-danger" onclick="clearHistory('wifi')">Borrar Historial</button>
+                </div>
                 <table>
                     <thead>
                         <tr>
@@ -372,11 +375,11 @@
 
         <!-- BLE HISTORY VIEW -->
         <div id="view-ble-history" class="view-section">
-            <div class="header">
-                <h1>Historial Beacons</h1>
-                <button class="btn-primary" onclick="loadBleHistory()">Actualizar</button>
-            </div>
             <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <h3>Historial Beacons</h3>
+                    <button class="btn-primary" onclick="loadBleHistory()">Actualizar</button>
+                </div>
                 <table>
                     <thead>
                         <tr>
