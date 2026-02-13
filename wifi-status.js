@@ -1,18 +1,22 @@
-require('dotenv').config();
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const wifiUtils = require('./wifi-utils');
 const mqtt = require('mqtt');
 const path = require('path');
+const fs = require('fs');
+const { exec } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const cors = require('cors');
+require('dotenv').config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public')); // Servir archivos estáticos desde 'public'
 
 const PORT = process.env.WIFI_PORT || 3035;
 const DB_FILE = process.env.WIFI_DB_FILE || 'wifi_status.db';
+const ENV_FILE = path.join(__dirname, '.env');
 
 // Configuración MQTT
 const UNIT = process.env.UNIT || "TEST_UNIT";
@@ -37,11 +41,100 @@ db.run(`
   )
 `);
 
+// --- FUNCIONES AUXILIARES (.ENV) ---
+function parseEnv(content) {
+  const env = [];
+  let currentComment = '';
+
+  content.split(/\r?\n/).forEach(line => {
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith('#')) {
+      currentComment = trimmedLine.substring(1).trim();
+    } else {
+      const match = line.match(/^([^=]+)=(.*)$/);
+      if (match) {
+        const key = match[1].trim();
+        const value = match[2].trim();
+        env.push({
+          key,
+          value: value.replace(/^["'](.*)["']$/, '$1'),
+          description: currentComment
+        });
+        currentComment = '';
+      }
+    }
+  });
+  return env;
+}
+
+// --- API ENDPOINTS (CONFIG SERVER MERGED) ---
+
+// GET /api/env - Leer archivo .env
+app.get('/api/env', (req, res) => {
+  fs.readFile(ENV_FILE, 'utf8', (err, data) => {
+    if (err) {
+      if (err.code === 'ENOENT') {
+        return res.json({});
+      }
+      return res.status(500).json({ error: 'Failed to read .env file' });
+    }
+    const envVars = parseEnv(data);
+    res.json(envVars);
+  });
+});
+
+// POST /api/env - Escribir archivo .env
+app.post('/api/env', (req, res) => {
+  const changes = req.body;
+
+  fs.readFile(ENV_FILE, 'utf8', (err, data) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to read .env file for updating' });
+    }
+
+    let newContent = data;
+    const items = Array.isArray(changes)
+      ? changes
+      : Object.entries(changes).map(([key, value]) => ({ key, value }));
+
+    items.forEach(item => {
+      const regex = new RegExp(`^(${item.key})=(.*)$`, 'm');
+      if (regex.test(newContent)) {
+        newContent = newContent.replace(regex, `$1=${item.value}`);
+      } else {
+        const prefix = newContent.endsWith('\n') ? '' : '\n';
+        newContent += `${prefix}${item.key}=${item.value}\n`;
+      }
+    });
+
+    fs.writeFile(ENV_FILE, newContent, (err) => {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to save .env file' });
+      }
+      res.json({ success: true, message: 'Configuration saved' });
+    });
+  });
+});
+
+// POST /api/restart - Reiniciar procesos PM2
+app.post('/api/restart', (req, res) => {
+  console.log('Restarting processes via PM2...');
+  exec('pm2 restart ecosystem.config.js', (error, stdout, stderr) => {
+    if (error) {
+      console.error(`exec error: ${error}`);
+      return res.status(500).json({ error: 'Failed to restart processes', details: stderr });
+    }
+    console.log(`stdout: ${stdout}`);
+    res.json({ success: true, message: 'Processes restarting...' });
+  });
+});
+
+// --- API ENDPOINTS (WIFI STATUS) ---
+
 async function getWifiStatus() {
   return await wifiUtils.getWifiStatus();
 }
 
-// Endpoint para borrar todos los registros de la tabla wifi_status
 app.delete('/api/wifi/history', (req, res) => {
   db.run('DELETE FROM wifi_status', (err) => {
     if (err) {
@@ -57,7 +150,6 @@ app.get('/api/wifi/status', async (req, res) => {
   res.json(status);
 });
 
-// API con filtro de fechas opcional
 app.get('/api/wifi/history', (req, res) => {
   let { from, to } = req.query;
   let query = 'SELECT * FROM wifi_status';
@@ -177,20 +269,22 @@ setInterval(async () => {
 
   mqttClient.publish(MQTT_TOPIC, JSON.stringify(payload), { qos: 0 }, (err) => {
     if (err) console.error('❌ Error enviando WiFi MQTT:', err);
-    else console.log(`📡 Estado WiFi enviado a ${MQTT_TOPIC}`);
+    // else console.log(`📡 Estado WiFi enviado a ${MQTT_TOPIC}`);
   });
 
 }, 60000);
 
-
-// Servir la vista web de historial WiFi
-app.get('/wifi-history', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'wifi-history.html'));
+// Servir index.html (SPA) para cualquier ruta no-API
+app.get('*', (req, res) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  } else {
+    res.status(404).json({ error: 'Endpoint not found' });
+  }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🌐 Servicio WiFi iniciado en http://0.0.0.0:${PORT}`);
-  console.log(`   Estado actual: http://0.0.0.0:${PORT}/api/wifi/status`);
+  console.log(`🌐 Dashboard Unificado iniciado en http://0.0.0.0:${PORT}`);
 });
 
 process.on('SIGINT', () => {
