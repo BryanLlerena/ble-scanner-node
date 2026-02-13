@@ -527,15 +527,15 @@
                 data.forEach(row => {
                     const tr = document.createElement('tr');
                     const date = new Date(row.timestamp).toLocaleString();
-                    const avgText = row.avgRssi ? `<span style="font-size:0.8rem; color:#64748b;">(Avg: ${row.avgRssi})</span>` : '';
-                    const samplesText = row.samples ? `<span style="font-size:0.75rem; color:#94a3b8;">[${row.samples} m.]</span>` : '';
-                    const distance = (parseFloat(row.distance) / 100).toFixed(2);
+
+                    // Convertir CM promedio a Metros
+                    const distanceMeters = (parseFloat(row.avgDistance) / 100).toFixed(2);
 
                     tr.innerHTML = `
                         <td>${date}</td>
                         <td>${row.beaconMac}</td>
-                        <td>${distance}</td>
-                        <td><b>${row.rssi}</b> ${avgText} ${samplesText}</td>
+                        <td>${distanceMeters} <small class="text-xs" style="color:#94a3b8;">(Avg)</small></td>
+                        <td><b>${row.avgRssi}</b> <small class="text-xs" style="color:#94a3b8;">[${row.samples} muestras]</small></td>
                         <td>${row.eventState}</td>
                     `;
                     tbody.appendChild(tr);

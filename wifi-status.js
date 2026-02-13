@@ -232,13 +232,40 @@ app.get('/api/ble/recent', (req, res) => {
   });
 });
 
-// GET /api/ble/history - Historial completo de beacons
+// Helper para calcular promedios desde JSON string
+function calculateStatsFromHistory(rssiJson) {
+  if (!rssiJson) return { avgRssi: 0, avgDistance: 0, count: 0, lastRssi: 0, lastDistance: 0 };
+
+  try {
+    const entries = JSON.parse(rssiJson);
+    if (!entries || entries.length === 0) return { avgRssi: 0, avgDistance: 0, count: 0, lastRssi: 0, lastDistance: 0 };
+
+    const sumRssi = entries.reduce((acc, curr) => acc + (curr.rssi || 0), 0);
+    const sumDist = entries.reduce((acc, curr) => acc + (curr.distance || 0), 0);
+    const count = entries.length;
+    const lastEntry = entries[entries.length - 1];
+
+    return {
+      avgRssi: Math.round(sumRssi / count),
+      avgDistance: Math.round(sumDist / count), // CM
+      count: count,
+      lastRssi: lastEntry.rssi,
+      lastDistance: lastEntry.distance
+    };
+  } catch (e) {
+    console.error("Error parsing RSSI JSON:", e);
+    return { avgRssi: 0, avgDistance: 0, count: 0, lastRssi: 0, lastDistance: 0 };
+  }
+}
+
+// GET /api/ble/history - Historial con promedios
 app.get('/api/ble/history', (req, res) => {
   const limit = parseInt(req.query.limit) || 100;
   const offset = parseInt(req.query.offset) || 0;
 
   const query = `
-        SELECT * FROM beacon_events 
+        SELECT id, beaconMac, rssi, timestamp, eventState, f_final 
+        FROM beacon_events 
         ORDER BY timestamp DESC 
         LIMIT ? OFFSET ?
     `;
@@ -247,7 +274,24 @@ app.get('/api/ble/history', (req, res) => {
     if (err) {
       return res.status(500).json({ error: 'Error reading beacons db' });
     }
-    res.json(rows);
+
+    // Procesar cada fila para calcular promedios
+    const results = rows.map(row => {
+      const stats = calculateStatsFromHistory(row.rssi);
+      return {
+        id: row.id,
+        beaconMac: row.beaconMac,
+        timestamp: row.f_final || row.timestamp, // Preferir f_final como "último visto"
+        eventState: row.eventState,
+        avgRssi: stats.avgRssi,
+        avgDistance: stats.avgDistance, // CM
+        samples: stats.count,
+        lastRssi: stats.lastRssi,
+        lastDistance: stats.lastDistance // CM
+      };
+    });
+
+    res.json(results);
   });
 });
 
