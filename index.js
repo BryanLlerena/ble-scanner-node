@@ -72,24 +72,14 @@ function generateUUID() {
   return `${uuidv4()}-${UNIT}`;
 }
 
-// Calcular distancia basada en RSSI
+// Calcular distancia basada en RSSI (en Metros)
 function calculateDistance(rssi, txPower = -59) {
   if (rssi === 0) return -1;
   const n = 2.0;
   const distanceMeters = Math.pow(10, (txPower - rssi) / (10.0 * n));
-  const distanceCm = distanceMeters * 100;
-
-  if (distanceCm < 10) return 10;
-  if (distanceCm > 10000) return 10000;
-
-  return Math.round(distanceCm);
+  return parseFloat(distanceMeters.toFixed(2));
 }
 
-function calculateDistanceInM(rssi, txPower = -59) {
-  if (rssi === 0) return -1;
-  const n = 2.0;
-  return Math.pow(10, (txPower - rssi) / (10.0 * n));
-}
 
 // Función para guardar evento de beacon
 function saveBeaconEvent(deviceData) {

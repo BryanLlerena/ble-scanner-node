@@ -301,7 +301,7 @@
                     <thead>
                         <tr>
                             <th>MAC</th>
-                            <th>Distancia (cm)</th>
+                            <th>Distancia (m)</th>
                             <th>RSSI</th>
                             <th>Estado</th>
                             <th>Última Señal</th>
@@ -357,7 +357,7 @@
                         <tr>
                             <th>Fecha</th>
                             <th>MAC</th>
-                            <th>Distancia (cm)</th>
+                            <th>Distancia (m)</th>
                             <th>RSSI Promedio</th>
                             <th>Estado Evento</th>
                         </tr>
@@ -456,9 +456,10 @@
                 data.forEach(row => {
                     const tr = document.createElement('tr');
                     const date = new Date(row.timestamp).toLocaleTimeString();
+                    const distance = parseFloat(row.distance).toFixed(2);
                     tr.innerHTML = `
                         <td>${row.beaconMac}</td>
-                        <td><b>${row.distance}</b></td>
+                        <td><b>${distance}</b></td>
                         <td>${row.rssi}</td>
                         <td>${row.eventState || 'active'}</td>
                         <td>${date}</td>
@@ -526,13 +527,15 @@
                 data.forEach(row => {
                     const tr = document.createElement('tr');
                     const date = new Date(row.timestamp).toLocaleString();
-                    const avgLabel = row.samples ? ` <small class="text-xs">(${row.samples} m.)</small>` : '';
+                    const avgText = row.avgRssi ? `<span style="font-size:0.8rem; color:#64748b;">(Avg: ${row.avgRssi})</span>` : '';
+                    const samplesText = row.samples ? `<span style="font-size:0.75rem; color:#94a3b8;">[${row.samples} m.]</span>` : '';
+                    const distance = parseFloat(row.distance).toFixed(2);
 
                     tr.innerHTML = `
                         <td>${date}</td>
                         <td>${row.beaconMac}</td>
-                        <td>${row.distance}</td>
-                        <td><b>${row.rssi}</b> ${avgLabel}</td>
+                        <td>${distance}</td>
+                        <td><b>${row.rssi}</b> ${avgText} ${samplesText}</td>
                         <td>${row.eventState}</td>
                     `;
                     tbody.appendChild(tr);
@@ -596,7 +599,7 @@
 
         // Init
         loadAllStatus();
-        setInterval(loadAllStatus, 5000); // 5s refresh for live view
+        setInterval(loadAllStatus, 2000); // 2s refresh for live view
     </script>
 </body>
 
