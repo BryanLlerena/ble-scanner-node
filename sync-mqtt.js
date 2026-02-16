@@ -108,7 +108,25 @@ function saveGPSToDatabase(gpsData) {
 
 // Función para leer datos GPS
 function readGPSData(callback) {
+  // No lanzar otro proceso si ya hay uno corriendo
+  if (gpsProcessRunning) {
+    logger.debug('⏳ Proceso GPS ya en ejecución, saltando...');
+    return;
+  }
+
+  gpsProcessRunning = true;
   const gpsProcess = spawn('sh', ['/usr/bin/gps_runner.sh']);
+  let gpsDataReceived = false;
+
+  // Timeout de 5 segundos
+  const timeout = setTimeout(() => {
+    if (!gpsDataReceived) {
+      logger.warn('⏱️ Timeout GPS (5s), matando proceso');
+      gpsProcess.kill();
+      gpsProcessRunning = false;
+    }
+  }, 5000);
+
   gpsProcess.stdout.on('data', (data) => {
     const lines = data.toString().split('\n');
     for (const line of lines) {
@@ -130,21 +148,36 @@ function readGPSData(callback) {
             // Guardar en base de datos local
             saveGPSToDatabase(lastGPSData);
             
+            gpsDataReceived = true;
+            clearTimeout(timeout);
             callback(lastGPSData);
             gpsProcess.kill();
+            gpsProcessRunning = false;
             break;
           }
         }
       }
     }
   });
+
   gpsProcess.stderr.on('data', (data) => {
     logger.warn('GPS stderr:', data.toString());
   });
+
   gpsProcess.on('error', (err) => {
     logger.error('GPS process error:', err.message);
+    clearTimeout(timeout);
+    gpsProcessRunning = false;
+  });
+
+  gpsProcess.on('exit', () => {
+    clearTimeout(timeout);
+    gpsProcessRunning = false;
   });
 }
+
+// Variable para controlar si hay un proceso GPS en ejecución
+let gpsProcessRunning = false;
 
 // Convertir NMEA a decimal
 function nmeaToDecimal(nmea, direction) {
