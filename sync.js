@@ -470,6 +470,9 @@ async function syncGPSData(db) {
       wifiInfo.wap_mac = info.bssid;
     }).catch(console.error);
 
+    // Configurar endpoint GPS
+    const GPS_ENDPOINT = `${API_BASE_URL}/gps-data`;
+
     // Enviar en lotes hasta que no haya más pendientes
     while (true) {
       const pendingGPS = await getPendingGPSData(db, BATCH_SIZE);
@@ -483,20 +486,24 @@ async function syncGPSData(db) {
 
       logger.info(`📍 Enviando lote de ${pendingGPS.length} registros GPS...`);
 
-    // Convertir a formato API
-    const payload = pendingGPS.map(gps => ({
-      unit: gps.unit || UNIT,
-      latitude: gps.latitude,
-      longitude: gps.longitude,
-      fix: gps.fix,
-      timestamp: gps.timestamp,
-      wap: wifiInfo.wap || "",
-      wap_mac: wifiInfo.wap_mac || ""
-    }));
+      // Convertir a formato API
+      const payload = pendingGPS.map(gps => ({
+        unit: gps.unit || UNIT,
+        latitude: gps.latitude,
+        longitude: gps.longitude,
+        fix: gps.fix,
+        timestamp: gps.timestamp,
+        wap: wifiInfo.wap || "",
+        wap_mac: wifiInfo.wap_mac || ""
+      }));
 
-    // Configurar endpoint GPS
-    const GPS_ENDPOINT = `${API_BASE_URL}/gps-data`;
-  if (response.ok) {
+      // Enviar a la API
+      const response = await makeHttpRequest(GPS_ENDPOINT, {
+        method: 'POST',
+        headers: DEFAULT_HEADERS
+      }, payload);
+
+      if (response.ok) {
         // Marcar como enviados
         const gpsIds = pendingGPS.map(gps => gps.id);
         await markGPSAsSent(db, gpsIds);
@@ -520,14 +527,7 @@ async function syncGPSData(db) {
 
   } catch (error) {
     logger.error('❌ Error en syncGPSData:', error.message);
-    return { success: false, error: error.message, sent: totalSent
-      logger.error(`❌ Error enviando GPS: HTTP ${response.status}`);
-      return { success: false, error: `HTTP ${response.status}`, sent: 0 };
-    }
-
-  } catch (error) {
-    logger.error('❌ Error en syncGPSData:', error.message);
-    return { success: false, error: error.message, sent: 0 };
+    return { success: false, error: error.message, sent: totalSent };
   }
 }
 
