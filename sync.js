@@ -400,8 +400,104 @@ async function syncBeaconEvents(db) {
   }
 }
 
+// ============================================================================
+// FUNCIONES DE SINCRONIZACIÓN DE GPS
+// ============================================================================
+
+// Obtener datos GPS pendientes de sincronización
+function getPendingGPSData(db) {
+  return new Promise((resolve, reject) => {
+    db.all(`
+      SELECT * FROM gps_data 
+      WHERE syncStatus = 'pending'
+      ORDER BY id ASC
+    `, (err, rows) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(rows);
+    });
+  });
+}
+
+// Marcar GPS como sincronizados
+function markGPSAsSent(db, gpsIds) {
+  return new Promise((resolve, reject) => {
+    const placeholders = gpsIds.map(() => '?').join(',');
+    db.run(`
+      UPDATE gps_data 
+      SET syncStatus = 'sent', syncTimestamp = ? 
+      WHERE id IN (${placeholders})
+    `, [new Date().toISOString(), ...gpsIds], (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+// Enviar datos GPS al API
+async function syncGPSData(db) {
+  let wifiInfo = { wap: "", wap_mac: "" };
+  try {
+    const pendingGPS = await getPendingGPSData(db);
+
+    await getWifiInfo().then(info => {
+      wifiInfo.wap = info.ssid;
+      wifiInfo.wap_mac = info.bssid;
+    }).catch(console.error);
+
+    if (pendingGPS.length === 0) {
+      logger.debug('📍 No hay datos GPS pendientes para enviar');
+      return { success: true, sent: 0 };
+    }
+
+    logger.info(`📍 Enviando ${pendingGPS.length} registros GPS...`);
+
+    // Convertir a formato API
+    const payload = pendingGPS.map(gps => ({
+      unit: gps.unit || UNIT,
+      latitude: gps.latitude,
+      longitude: gps.longitude,
+      fix: gps.fix,
+      timestamp: gps.timestamp,
+      wap: wifiInfo.wap || "",
+      wap_mac: wifiInfo.wap_mac || ""
+    }));
+
+    // Configurar endpoint GPS
+    const GPS_ENDPOINT = `${API_BASE_URL}/gps-data`;
+
+    // Enviar a la API
+    const response = await makeHttpRequest(GPS_ENDPOINT, {
+      method: 'POST',
+      headers: DEFAULT_HEADERS
+    }, payload);
+
+    if (response.ok) {
+      // Marcar como enviados
+      const gpsIds = pendingGPS.map(gps => gps.id);
+      await markGPSAsSent(db, gpsIds);
+
+      logger.info(`✅ ${pendingGPS.length} registros GPS enviados exitosamente`);
+      return { success: true, sent: pendingGPS.length };
+    } else {
+      logger.error(`❌ Error enviando GPS: HTTP ${response.status}`);
+      return { success: false, error: `HTTP ${response.status}`, sent: 0 };
+    }
+
+  } catch (error) {
+    logger.error('❌ Error en syncGPSData:', error.message);
+    return { success: false, error: error.message, sent: 0 };
+  }
+}
+
 module.exports = {
   syncBeaconEvents,
+  syncGPSData,
   checkInternetConnection,
   sendNewBeaconEvents,
   updateExistingBeaconEvents
