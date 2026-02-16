@@ -6,17 +6,17 @@ const logger = require('./logger');
 const DB_FILE = process.env.DB_FILE || 'beacons.db';
 const db = new sqlite3.Database(DB_FILE);
 
-console.log('🧪 SCRIPT DE PRUEBA DE LIMPIEZA\n');
+console.log('🧪 SCRIPT DE PRUEBA DE LIMPIEZA (MODO TESTING - 30 MIN)\n');
 
-// 1. Insertar datos de prueba GPS antiguos (8 días atrás)
-const eightDaysAgo = Date.now() - (8 * 24 * 60 * 60 * 1000);
+// 1. Insertar datos de prueba GPS antiguos (35 minutos atrás)
+const thirtyFiveMinutesAgo = Date.now() - (35 * 60 * 1000);
 
-console.log('1️⃣ Insertando GPS de prueba (8 días atrás, syncStatus=pending)...');
-console.log('   (Simula GPS que nunca se pudo sincronizar por falta de endpoint)\n');
+console.log('1️⃣ Insertando GPS de prueba (35 minutos atrás, syncStatus=pending)...');
+console.log('   (Simula GPS antiguo para probar limpieza inmediata)\n');
 db.run(`
   INSERT INTO gps_data (unit, latitude, longitude, fix, timestamp, created, syncStatus)
   VALUES ('TEST_UNIT', -12.0464, -77.0428, '1', datetime('now'), ?, 'pending')
-`, [eightDaysAgo], function(err) {
+`, [thirtyFiveMinutesAgo], function(err) {
   if (err) {
     console.error('❌ Error insertando GPS prueba:', err.message);
   } else {
@@ -31,14 +31,14 @@ db.run(`
         console.table(rows);
         
         // 3. Ejecutar limpieza
-        console.log('\n3️⃣ Ejecutando limpieza (datos > 7 días, cualquier syncStatus)...');
-        console.log('   (Para testing borramos pending también, en producción solo sent)\n');
-        const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        console.log('\n3️⃣ Ejecutando limpieza (datos > 30 minutos, cualquier syncStatus)...');
+        console.log('   (MODO TESTING: borra datos > 30 min para prueba rápida)\n');
+        const thirtyMinutesAgo = Date.now() - (30 * 60 * 1000);
         
         db.run(`
           DELETE FROM gps_data 
           WHERE created < ?
-        `, [sevenDaysAgo], function(err) {
+        `, [thirtyMinutesAgo], function(err) {
           if (err) {
             console.error('❌ Error limpiando:', err.message);
           } else {
