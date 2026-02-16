@@ -6,59 +6,77 @@ const logger = require('./logger');
 const DB_FILE = process.env.DB_FILE || 'beacons.db';
 const db = new sqlite3.Database(DB_FILE);
 
-console.log('🧪 SCRIPT DE PRUEBA DE LIMPIEZA (MODO TESTING - 30 MIN)\n');
+console.log('🧪 SCRIPT DE PRUEBA DE LIMPIEZA - BORRAR DATOS DE HOY\n');
 
-// 1. Insertar datos de prueba GPS antiguos (35 minutos atrás)
-const thirtyFiveMinutesAgo = Date.now() - (35 * 60 * 1000);
-
-console.log('1️⃣ Insertando GPS de prueba (35 minutos atrás, syncStatus=pending)...');
-console.log('   (Simula GPS antiguo para probar limpieza inmediata)\n');
-db.run(`
-  INSERT INTO gps_data (unit, latitude, longitude, fix, timestamp, created, syncStatus)
-  VALUES ('TEST_UNIT', -12.0464, -77.0428, '1', datetime('now'), ?, 'pending')
-`, [thirtyFiveMinutesAgo], function(err) {
+// 1. Mostrar todos los GPS antes de limpieza
+console.log('1️⃣ GPS actuales en BD ANTES de limpieza:');
+db.all('SELECT id, unit, created, syncStatus, datetime(created/1000, "unixepoch") as fecha FROM gps_data ORDER BY id DESC LIMIT 20', (err, rows) => {
   if (err) {
-    console.error('❌ Error insertando GPS prueba:', err.message);
-  } else {
-    console.log(`✅ GPS de prueba insertado con ID ${this.lastID}\n`);
-    
-    // 2. Mostrar todos los GPS
-    console.log('2️⃣ GPS actuales en BD:');
-    db.all('SELECT id, unit, created, syncStatus, datetime(created/1000, "unixepoch") as fecha FROM gps_data', (err, rows) => {
-      if (err) {
-        console.error('❌ Error:', err.message);
-      } else {
-        console.table(rows);
-        
-        // 3. Ejecutar limpieza
-        console.log('\n3️⃣ Ejecutando limpieza (datos > 30 minutos, cualquier syncStatus)...');
-        console.log('   (MODO TESTING: borra datos > 30 min para prueba rápida)\n');
-        const thirtyMinutesAgo = Date.now() - (30 * 60 * 1000);
-        
-        db.run(`
-          DELETE FROM gps_data 
-          WHERE created < ?
-        `, [thirtyMinutesAgo], function(err) {
-          if (err) {
-            console.error('❌ Error limpiando:', err.message);
-          } else {
-            console.log(`\n✅ Limpieza completada: ${this.changes} registros eliminados\n`);
-            
-            // 4. Mostrar GPS después de limpieza
-            console.log('4️⃣ GPS después de limpieza:');
-            db.all('SELECT id, unit, created, syncStatus FROM gps_data', (err, rows) => {
-              if (err) {
-                console.error('❌ Error:', err.message);
-              } else {
-                console.table(rows);
-                
-                console.log('\n✅ Prueba completada');
-                db.close();
-              }
-            });
-          }
-        });
-      }
-    });
+    console.error('❌ Error:', err.message);
+    db.close();
+    return;
   }
+  
+  if (rows.length === 0) {
+    console.log('⚠️ No hay datos GPS en la BD aún\n');
+    db.close();
+    return;
+  }
+  
+  console.table(rows);
+  console.log(`\nTotal GPS: ${rows.length} (mostrando últimos 20)\n`);
+  
+  // 2. Ejecutar limpieza de datos de HOY
+  console.log('2️⃣ Ejecutando limpieza de TODOS los datos de hoy...\n');
+  
+  // Obtener inicio del día de hoy (00:00:00)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const startOfToday = today.getTime();
+  
+  console.log(`   Borrando GPS con created >= ${new Date(startOfToday).toISOString()}`);
+  console.log(`   (Todos los datos desde hoy a las 00:00:00)\n`);
+  
+  db.run(`
+    DELETE FROM gps_data 
+    WHERE created >= ?
+  `, [startOfToday], function(err) {
+    if (err) {
+      console.error('❌ Error limpiando:', err.message);
+      db.close();
+      return;
+    }
+    
+    console.log(`✅ Limpieza completada: ${this.changes} registros GPS eliminados\n`);
+    
+    // 3. Limpiar beacons de hoy también
+    db.run(`
+      DELETE FROM beacon_events 
+      WHERE created >= ?
+    `, [startOfToday], function(err) {
+      if (err) {
+        console.error('❌ Error limpiando beacons:', err.message);
+      } else if (this.changes > 0) {
+        console.log(`✅ También eliminados: ${this.changes} beacons de hoy\n`);
+      }
+      
+      // 4. Mostrar GPS después de limpieza
+      console.log('3️⃣ GPS después de limpieza:');
+      db.all('SELECT id, unit, created, syncStatus, datetime(created/1000, "unixepoch") as fecha FROM gps_data ORDER BY id DESC LIMIT 20', (err, rows) => {
+        if (err) {
+          console.error('❌ Error:', err.message);
+        } else {
+          if (rows.length === 0) {
+            console.log('✅ Base de datos limpia - no hay GPS restantes\n');
+          } else {
+            console.table(rows);
+            console.log(`\nGPS restantes: ${rows.length}\n`);
+          }
+        }
+        
+        console.log('✅ Prueba completada');
+        db.close();
+      });
+    });
+  });
 });
