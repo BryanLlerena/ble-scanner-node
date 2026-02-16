@@ -161,14 +161,15 @@ function calculateBeaconStats(rssiArray) {
   };
 }
 
-// Obtener eventos pendientes de sincronización
-function getPendingEvents(db) {
+// Obtener eventos pendientes de sincronización (con límite)
+function getPendingEvents(db, limit = 500) {
   return new Promise((resolve, reject) => {
     db.all(`
       SELECT * FROM beacon_events 
       WHERE syncStatus = 'pending'
       ORDER BY id ASC
-    `, (err, rows) => {
+      LIMIT ?
+    `, [limit], (err, rows) => {
       if (err) {
         reject(err);
         return;
@@ -263,48 +264,65 @@ function generateUUID() {
   });
 }
 
-// Enviar eventos nuevos (POST /many)
+// Enviar eventos nuevos (POST /many) - por lotes de 500
 async function sendNewBeaconEvents(db) {
+  const BATCH_SIZE = 500;
+  let totalSent = 0;
   let wifiInfo = { wap: "", wap_mac: "" };
+  
   try {
-    const pendingEvents = await getPendingEvents(db);
-
     await getWifiInfo().then(info => {
       wifiInfo.wap = info.ssid;
       wifiInfo.wap_mac = info.bssid;
     }).catch(console.error);
 
-    if (pendingEvents.length === 0) {
-      logger.debug('📡 No hay eventos pendientes para enviar');
-      return { success: true, sent: 0 };
-    }
+    // Enviar en lotes hasta que no haya más pendientes
+    while (true) {
+      const pendingEvents = await getPendingEvents(db, BATCH_SIZE);
 
-    logger.info(`📡 Enviando ${pendingEvents.length} eventos nuevos...`);
+      if (pendingEvents.length === 0) {
+        if (totalSent === 0) {
+          logger.debug('📡 No hay eventos pendientes para enviar');
+        }
+        return { success: true, sent: totalSent };
+      }
 
-    // Convertir a formato API
-    const payload = pendingEvents.map((e) => convertEventToApiFormat(e, wifiInfo));
+      logger.info(`📡 Enviando lote de ${pendingEvents.length} eventos...`);
 
-    // Enviar a la API
-    const response = await makeHttpRequest(API_ENDPOINTS.BEACON_TRACK_MANY, {
-      method: 'POST',
-      headers: DEFAULT_HEADERS
-    }, payload);
+      // Convertir a formato API
+      const payload = pendingEvents.map((e) => convertEventToApiFormat(e, wifiInfo));
 
-    if (response.ok) {
-      // Marcar como enviados
-      const eventIds = pendingEvents.map(event => event.id);
-      await markEventsAsSent(db, eventIds);
+      // Enviar a la API
+      const response = await makeHttpRequest(API_ENDPOINTS.BEACON_TRACK_MANY, {
+        method: 'POST',
+        headers: DEFAULT_HEADERS
+      }, payload);
 
-      logger.info(`✅ ${pendingEvents.length} eventos enviados exitosamente`);
-      return { success: true, sent: pendingEvents.length };
-    } else {
-      logger.error(`❌ Error enviando eventos: HTTP ${response.status}`);
-      return { success: false, error: `HTTP ${response.status}`, sent: 0 };
+      if (response.ok) {
+        // Marcar como enviados
+        const eventIds = pendingEvents.map(event => event.id);
+        await markEventsAsSent(db, eventIds);
+
+        totalSent += pendingEvents.length;
+        logger.info(`✅ Lote enviado: ${pendingEvents.length} beacons (Total: ${totalSent})`);
+        
+        // Si envió menos del lote completo, ya no hay más pendientes
+        if (pendingEvents.length < BATCH_SIZE) {
+          logger.info(`✅ Sincronización beacons completada: ${totalSent} eventos enviados`);
+          return { success: true, sent: totalSent };
+        }
+        
+        // Continuar con siguiente lote
+        continue;
+      } else {
+        logger.error(`❌ Error enviando lote beacons: HTTP ${response.status}`);
+        return { success: false, error: `HTTP ${response.status}`, sent: totalSent };
+      }
     }
 
   } catch (error) {
     logger.error('❌ Error en sendNewBeaconEvents:', error.message);
-    return { success: false, error: error.message, sent: 0 };
+    return { success: false, error: error.message, sent: totalSent };
   }
 }
 
@@ -404,14 +422,15 @@ async function syncBeaconEvents(db) {
 // FUNCIONES DE SINCRONIZACIÓN DE GPS
 // ============================================================================
 
-// Obtener datos GPS pendientes de sincronización
-function getPendingGPSData(db) {
+// Obtener datos GPS pendientes de sincronización (con límite)
+function getPendingGPSData(db, limit = 500) {
   return new Promise((resolve, reject) => {
     db.all(`
       SELECT * FROM gps_data 
       WHERE syncStatus = 'pending'
       ORDER BY id ASC
-    `, (err, rows) => {
+      LIMIT ?
+    `, [limit], (err, rows) => {
       if (err) {
         reject(err);
         return;
@@ -439,23 +458,30 @@ function markGPSAsSent(db, gpsIds) {
   });
 }
 
-// Enviar datos GPS al API
+// Enviar datos GPS al API (por lotes de 500)
 async function syncGPSData(db) {
+  const BATCH_SIZE = 500; // Enviar máximo 500 por vez
+  let totalSent = 0;
   let wifiInfo = { wap: "", wap_mac: "" };
+  
   try {
-    const pendingGPS = await getPendingGPSData(db);
-
     await getWifiInfo().then(info => {
       wifiInfo.wap = info.ssid;
       wifiInfo.wap_mac = info.bssid;
     }).catch(console.error);
 
-    if (pendingGPS.length === 0) {
-      logger.debug('📍 No hay datos GPS pendientes para enviar');
-      return { success: true, sent: 0 };
-    }
+    // Enviar en lotes hasta que no haya más pendientes
+    while (true) {
+      const pendingGPS = await getPendingGPSData(db, BATCH_SIZE);
 
-    logger.info(`📍 Enviando ${pendingGPS.length} registros GPS...`);
+      if (pendingGPS.length === 0) {
+        if (totalSent === 0) {
+          logger.debug('📍 No hay datos GPS pendientes para enviar');
+        }
+        return { success: true, sent: totalSent };
+      }
+
+      logger.info(`📍 Enviando lote de ${pendingGPS.length} registros GPS...`);
 
     // Convertir a formato API
     const payload = pendingGPS.map(gps => ({
@@ -470,21 +496,31 @@ async function syncGPSData(db) {
 
     // Configurar endpoint GPS
     const GPS_ENDPOINT = `${API_BASE_URL}/gps-data`;
+  if (response.ok) {
+        // Marcar como enviados
+        const gpsIds = pendingGPS.map(gps => gps.id);
+        await markGPSAsSent(db, gpsIds);
 
-    // Enviar a la API
-    const response = await makeHttpRequest(GPS_ENDPOINT, {
-      method: 'POST',
-      headers: DEFAULT_HEADERS
-    }, payload);
+        totalSent += pendingGPS.length;
+        logger.info(`✅ Lote enviado: ${pendingGPS.length} GPS (Total: ${totalSent})`);
+        
+        // Si envió menos del lote completo, ya no hay más pendientes
+        if (pendingGPS.length < BATCH_SIZE) {
+          logger.info(`✅ Sincronización GPS completada: ${totalSent} registros enviados`);
+          return { success: true, sent: totalSent };
+        }
+        
+        // Continuar con siguiente lote
+        continue;
+      } else {
+        logger.error(`❌ Error enviando lote GPS: HTTP ${response.status}`);
+        return { success: false, error: `HTTP ${response.status}`, sent: totalSent };
+      }
+    }
 
-    if (response.ok) {
-      // Marcar como enviados
-      const gpsIds = pendingGPS.map(gps => gps.id);
-      await markGPSAsSent(db, gpsIds);
-
-      logger.info(`✅ ${pendingGPS.length} registros GPS enviados exitosamente`);
-      return { success: true, sent: pendingGPS.length };
-    } else {
+  } catch (error) {
+    logger.error('❌ Error en syncGPSData:', error.message);
+    return { success: false, error: error.message, sent: totalSent
       logger.error(`❌ Error enviando GPS: HTTP ${response.status}`);
       return { success: false, error: `HTTP ${response.status}`, sent: 0 };
     }
