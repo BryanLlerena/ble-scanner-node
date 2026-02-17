@@ -665,3 +665,10 @@ Tienes dos formas principales de entrar a la terminal de la tablet remotamente:
 4. **Contraseña**: Introduce `gunjop123`.
 
 ¡Listo! Ya tienes control total de la tablet de forma remota.
+
+---
+
+## 9. Actualización a Node.js 24
+
+Para actualizar la instalación de Node.js existente a la versión 24, consulta la guía detallada:
+[Guía de Actualización a Node.js 24](./UPGRADE_GUIDE_NODE_24.md)
