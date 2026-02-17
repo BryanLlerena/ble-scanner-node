@@ -25,3 +25,8 @@ Thumbs.db
 # Archivos temporales
 *.tmp
 *.temp
+
+# Archivos de testing/documentación local (no subir)
+mqtt-listener.js
+DOCUMENTACION_GPS.md
+README_GPS_IMPLEMENTATION.md

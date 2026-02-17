@@ -1,3 +1,48 @@
+// Función para enviar GPS a topic separado
+async function sendGPSDataToMQTT() {
+  try {
+    if (!mqttClient || !mqttClient.connected) {
+      logger.debug('📡 Cliente MQTT no conectado, saltando envío GPS');
+      return;
+    }
+    
+    if (!lastGPSData) {
+      logger.debug('📍 No hay datos GPS para enviar');
+      return;
+    }
+
+    // Obtener información WiFi
+    let wifiInfo = { wap: "", wap_mac: "" };
+    try {
+      const info = await getWifiInfo();
+      wifiInfo.wap = info.ssid;
+      wifiInfo.wap_mac = info.bssid;
+    } catch (wifiErr) {
+      logger.warn('⚠️ No se pudo obtener información WiFi:', wifiErr.message);
+    }
+
+    const payload = {
+      unit: UNIT,
+      timestamp: new Date().toISOString(),
+      latitude: lastGPSData.latitude,
+      longitude: lastGPSData.longitude,
+      fix: lastGPSData.fix,
+      wap: wifiInfo.wap || "",
+      wap_mac: wifiInfo.wap_mac || ""
+    };
+
+    const message = JSON.stringify(payload, null, 2);
+    mqttClient.publish(MQTT_GPS_TOPIC, message, { qos: 0 }, (err) => {
+      if (err) {
+        logger.error('❌ Error enviando GPS MQTT:', err.message);
+      } else {
+        logger.info(`📍 GPS enviado por MQTT: ${MQTT_GPS_TOPIC}`);
+      }
+    });
+  } catch (error) {
+    logger.error('❌ Error en sendGPSDataToMQTT:', error.message);
+  }
+}
 // Servicio MQTT para envío de datos de beacons
 require('dotenv').config();
 const mqtt = require('mqtt');
@@ -5,6 +50,7 @@ const sqlite3 = require('sqlite3').verbose();
 const logger = require('./logger');
 const wifiUtils = require('./wifi-utils');
 const { v4: uuidv4 } = require('uuid');
+const { spawn } = require('child_process');
 
 const UNIT = process.env.UNIT || "TEST_UNIT";
 const DB_FILE = process.env.DB_FILE || 'beacons.db';
@@ -16,10 +62,15 @@ const MQTT_USERNAME = process.env.MQTT_USERNAME || null;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD || null;
 const MQTT_INTERVAL = parseInt(process.env.MQTT_INTERVAL) || 60000;
 const MQTT_TOPIC = `${COMPANY}/unit/${UNIT.toLowerCase()}/tracking`;
+const MQTT_GPS_TOPIC = `${COMPANY}/unit/${UNIT.toLowerCase()}/gps`;
 
 // Cliente MQTT
 let mqttClient = null;
 let db = null;
+
+// Variables para almacenar datos recientes
+let lastBeaconEvents = [];
+let lastGPSData = null;
 
 // Configuración del cliente MQTT
 const mqttOptions = {
@@ -37,6 +88,106 @@ if (MQTT_USERNAME && MQTT_PASSWORD) {
 
 async function getWifiInfo() {
   return await wifiUtils.getWifiInfo();
+}
+
+// Función para guardar GPS en base de datos local
+function saveGPSToDatabase(gpsData) {
+  const timestamp = new Date().toISOString();
+  
+  db.run(`
+    INSERT INTO gps_data (unit, latitude, longitude, fix, timestamp, created, syncStatus)
+    VALUES (?, ?, ?, ?, ?, ?, 'pending')
+  `, [UNIT, gpsData.latitude, gpsData.longitude, gpsData.fix, timestamp, timestamp], (err) => {
+    if (err) {
+      logger.error('❌ Error guardando GPS en BD:', err.message);
+    } else {
+      logger.info(`📍 GPS guardado localmente: lat=${gpsData.latitude.toFixed(4)}, lon=${gpsData.longitude.toFixed(4)}`);
+    }
+  });
+}
+
+// Función para leer datos GPS
+function readGPSData(callback) {
+  // No lanzar otro proceso si ya hay uno corriendo
+  if (gpsProcessRunning) {
+    logger.debug('⏳ Proceso GPS ya en ejecución, saltando...');
+    return;
+  }
+
+  gpsProcessRunning = true;
+  const gpsProcess = spawn('sh', ['/usr/bin/gps_runner.sh']);
+  let gpsDataReceived = false;
+
+  // Timeout de 5 segundos
+  const timeout = setTimeout(() => {
+    if (!gpsDataReceived) {
+      logger.warn('⏱️ Timeout GPS (5s), matando proceso');
+      gpsProcess.kill();
+      gpsProcessRunning = false;
+    }
+  }, 5000);
+
+  gpsProcess.stdout.on('data', (data) => {
+    const lines = data.toString().split('\n');
+    for (const line of lines) {
+      // Buscar línea NMEA GGA
+      if (line.includes('GGA')) {
+        const parts = line.split(',');
+        if (parts[2] && parts[4] && parts[6] !== '0') {
+          // Convertir NMEA a decimal
+          const lat = nmeaToDecimal(parts[2], parts[3]);
+          const lon = nmeaToDecimal(parts[4], parts[5]);
+          if (lat !== null && lon !== null) {
+            lastGPSData = {
+              latitude: lat,
+              longitude: lon,
+              fix: parts[6],
+              timestamp: Date.now()
+            };
+            
+            // Guardar en base de datos local
+            saveGPSToDatabase(lastGPSData);
+            
+            gpsDataReceived = true;
+            clearTimeout(timeout);
+            callback(lastGPSData);
+            gpsProcess.kill();
+            gpsProcessRunning = false;
+            break;
+          }
+        }
+      }
+    }
+  });
+
+  gpsProcess.stderr.on('data', (data) => {
+    logger.warn('GPS stderr:', data.toString());
+  });
+
+  gpsProcess.on('error', (err) => {
+    logger.error('GPS process error:', err.message);
+    clearTimeout(timeout);
+    gpsProcessRunning = false;
+  });
+
+  gpsProcess.on('exit', () => {
+    clearTimeout(timeout);
+    gpsProcessRunning = false;
+  });
+}
+
+// Variable para controlar si hay un proceso GPS en ejecución
+let gpsProcessRunning = false;
+
+// Convertir NMEA a decimal
+function nmeaToDecimal(nmea, direction) {
+  if (!nmea || !nmea.includes('.')) return null;
+  const dotPos = nmea.indexOf('.');
+  const degrees = parseFloat(nmea.substring(0, dotPos - 2));
+  const minutes = parseFloat(nmea.substring(dotPos - 2));
+  let decimal = degrees + (minutes / 60);
+  if (direction === 'S' || direction === 'W') decimal *= -1;
+  return decimal;
 }
 
 // Calcular estadísticas RSSI
@@ -126,7 +277,97 @@ function convertEventToMqttFormat(event, wap) {
   };
 }
 
-// Enviar datos por MQTT
+// Enviar beacons por MQTT (topic tracking)
+async function sendBeaconDataToMQTT() {
+  try {
+    if (!mqttClient || !mqttClient.connected) {
+      logger.debug('📡 Cliente MQTT no conectado, saltando envío beacons');
+      return;
+    }
+
+    const lastEvents = await getLastFiveEvents(db);
+
+    if (!lastEvents.length) {
+      logger.debug('📡 No hay datos beacon para enviar por MQTT');
+      return;
+    }
+
+    // Obtener información WiFi
+    let wifiInfo = { wap: "", wap_mac: "" };
+    try {
+      const info = await getWifiInfo();
+      wifiInfo.wap = info.ssid;
+      wifiInfo.wap_mac = info.bssid;
+    } catch (wifiErr) {
+      logger.warn('⚠️ No se pudo obtener información WiFi:', wifiErr.message);
+    }
+
+    const payload = {
+      unit: UNIT,
+      timestamp: new Date().toISOString(),
+      beacon: lastEvents.map(event => convertEventToMqttFormat(event, wifiInfo))
+    };
+
+    const message = JSON.stringify(payload, null, 2);
+    mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
+      if (err) {
+        logger.error('❌ Error enviando beacons MQTT:', err.message);
+      } else {
+        logger.info(`📡 ${lastEvents.length} beacons enviados por MQTT: ${MQTT_TOPIC}`);
+      }
+    });
+  } catch (error) {
+    logger.error('❌ Error en sendBeaconDataToMQTT:', error.message);
+  }
+}
+
+// Inicializar base de datos
+function initDatabase() {
+  return new Promise((resolve, reject) => {
+    db = new sqlite3.Database(DB_FILE, (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      logger.info('📊 Base de datos conectada para MQTT');
+      resolve(db);
+    });
+  });
+}
+
+// Inicializar cliente MQTT
+function initMQTT() {
+  return new Promise((resolve, reject) => {
+    logger.info(`📡 Conectando a MQTT broker: ${MQTT_BROKER}`);
+
+    mqttClient = mqtt.connect(MQTT_BROKER, mqttOptions);
+
+    mqttClient.on('connect', () => {
+      logger.info(`✅ Conectado a MQTT broker con ID: ${MQTT_CLIENT_ID}`);
+      logger.info(`📡 Topic de envío: ${MQTT_TOPIC}`);
+      resolve(mqttClient);
+    });
+
+    mqttClient.on('error', (err) => {
+      logger.error('❌ Error MQTT:', err.message);
+      reject(err);
+    });
+
+    mqttClient.on('disconnect', () => {
+      logger.warn('⚠️ Desconectado del broker MQTT');
+    });
+
+    mqttClient.on('reconnect', () => {
+      logger.info('🔄 Reconectando al broker MQTT...');
+    });
+
+    mqttClient.on('offline', () => {
+      logger.warn('📡 Cliente MQTT offline');
+    });
+  });
+}
+
+// Función principal para enviar beacon y/o GPS al mismo topic
 async function sendDataToMQTT() {
   try {
     if (!mqttClient || !mqttClient.connected) {
@@ -144,34 +385,29 @@ async function sendDataToMQTT() {
       logger.warn('⚠️ No se pudo obtener información WiFi:', wifiErr.message);
     }
 
-    // Obtener los últimos 5 eventos
     const lastEvents = await getLastFiveEvents(db);
 
-    if (lastEvents.length === 0) {
-      logger.debug('📡 No hay eventos para enviar por MQTT');
+    // Unificar el envío: beacon, gps o ambos
+    if (!lastEvents.length && !lastGPSData) {
+      logger.debug('📡 No hay datos beacon ni GPS para enviar por MQTT');
       return;
     }
 
-    // Convertir eventos al formato API
     const payload = {
       unit: UNIT,
       timestamp: new Date().toISOString(),
-      count: lastEvents.length,
-      wap_mac: wifiInfo.wap_mac,
-      events: lastEvents.map(event => convertEventToMqttFormat(event, wifiInfo))
+      beacon: lastEvents.length ? lastEvents.map(event => convertEventToMqttFormat(event, wifiInfo)) : undefined,
+      gps: lastGPSData || undefined
     };
 
-    // Enviar por MQTT
     const message = JSON.stringify(payload, null, 2);
-
     mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
       if (err) {
-        logger.error('❌ Error enviando mensaje MQTT:', err.message);
+        logger.error('❌ Error enviando datos unificados MQTT:', err.message);
       } else {
-        logger.info(`📡 Enviados ${lastEvents.length} eventos por MQTT al topic: ${MQTT_TOPIC}`);
+        logger.info('📡 Enviado datos unificados por MQTT');
       }
     });
-
   } catch (error) {
     logger.error('❌ Error en sendDataToMQTT:', error.message);
   }
@@ -240,8 +476,16 @@ async function startMQTTService() {
     // Inicializar cliente MQTT
     await initMQTT();
 
-    // Programar envíos periódicos
-    setInterval(sendDataToMQTT, MQTT_INTERVAL);
+    // Programar envíos cada segundo
+    setInterval(() => {
+      // Leer GPS y enviar a topic GPS
+      readGPSData(() => {
+        sendGPSDataToMQTT();
+      });
+      
+      // Enviar beacons a topic tracking
+      sendBeaconDataToMQTT();
+    }, 1000);
 
     logger.info('✅ Servicio MQTT iniciado correctamente');
 
@@ -281,7 +525,8 @@ if (require.main === module) {
 
 module.exports = {
   startMQTTService,
-  sendDataToMQTT,
+  sendBeaconDataToMQTT,
+  sendGPSDataToMQTT,
   initMQTT,
   initDatabase
 };

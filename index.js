@@ -57,10 +57,26 @@ db.serialize(() => {
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_beacon_mac ON beacon_events(beaconMac)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_event_state ON beacon_events(eventState)`);
+  db.run(`ALTER TABLE beacon_events ADD COLUMN syncStatus TEXT DEFAULT 'pending'`, () => {});
+  db.run(`ALTER TABLE beacon_events ADD COLUMN syncTimestamp DATETIME`, () => {});
+  db.run(`ALTER TABLE beacon_events ADD COLUMN uuid TEXT`, () => {});
+  db.run(`ALTER TABLE beacon_events ADD COLUMN created TEXT`, () => {});
 
-  db.run(`ALTER TABLE beacon_events ADD COLUMN syncStatus TEXT DEFAULT 'pending'`, () => { });
-  db.run(`ALTER TABLE beacon_events ADD COLUMN syncTimestamp DATETIME`, () => { });
-  db.run(`ALTER TABLE beacon_events ADD COLUMN uuid TEXT`, () => { });
+  // Tabla GPS separada
+  db.run(`CREATE TABLE IF NOT EXISTS gps_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit TEXT,
+    latitude REAL,
+    longitude REAL,
+    fix TEXT,
+    timestamp TEXT,
+    created TEXT,
+    syncStatus TEXT DEFAULT 'pending',
+    syncTimestamp TEXT
+  )`);
+  
+  db.run(`CREATE INDEX IF NOT EXISTS idx_gps_syncStatus ON gps_data(syncStatus)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_gps_created ON gps_data(created)`);
 });
 
 // Cache temporal para dispositivos detectados
@@ -110,8 +126,8 @@ function saveBeaconEvent(deviceData) {
   const rssi_discard = deviceData.distanceInM > SCAN_RANGE ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
 
   db.run(
-    `INSERT INTO beacon_events (deviceId, beaconMac, name, rssi, rssi_discard, timestamp, type, uuid, major, minor, txPower, namespace, instance, distance, distanceInM, eventState, f_inicio, f_final, unit, manufacturerData, serviceData, syncStatus) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, 'pending')`,
+    `INSERT INTO beacon_events (deviceId, beaconMac, name, rssi, rssi_discard, timestamp, type, uuid, major, minor, txPower, namespace, instance, distance, distanceInM, eventState, f_inicio, f_final, unit, manufacturerData, serviceData, syncStatus, created) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, 'pending', ?)`,
     [
       deviceData.deviceId,
       deviceData.mac,
@@ -132,7 +148,8 @@ function saveBeaconEvent(deviceData) {
       timestamp,
       UNIT,
       deviceData.manufacturerData,
-      deviceData.serviceData
+      deviceData.serviceData,
+      timestamp
     ],
     err => {
       if (err) {

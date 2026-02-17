@@ -15,10 +15,32 @@ function showStats() {
   console.log('📈 ESTADÍSTICAS GENERALES:');
   console.log('=' .repeat(50));
   
-  // Total de eventos
+  // Total de eventos beacon
   db.get(`SELECT COUNT(*) as total FROM beacon_events`, (err, row) => {
     if (err) console.error('Error:', err);
-    else console.log(`📋 Total de eventos: ${row.total}`);
+    else console.log(`📋 Total de eventos beacon: ${row.total}`);
+  });
+  
+  // Total de registros GPS
+  db.get(`SELECT COUNT(*) as total FROM gps_data`, (err, row) => {
+    if (err && err.message.includes('no such table')) {
+      console.log(`📍 Total de registros GPS: 0 (tabla no existe aún)`);
+    } else if (err) {
+      console.error('Error GPS:', err);
+    } else {
+      console.log(`📍 Total de registros GPS: ${row.total}`);
+    }
+  });
+  
+  // Estados de sincronización GPS
+  db.all(`SELECT syncStatus, COUNT(*) as count FROM gps_data GROUP BY syncStatus`, (err, rows) => {
+    if (err && !err.message.includes('no such table')) {
+      console.error('Error:', err);
+    } else if (rows && rows.length > 0) {
+      rows.forEach(row => {
+        console.log(`  🔹 GPS '${row.syncStatus}': ${row.count} registros`);
+      });
+    }
   });
   
   // Eventos abiertos vs cerrados
@@ -153,6 +175,55 @@ function showBeaconEvents(mac) {
   });
 }
 
+// Función para mostrar datos GPS
+function showGPSData(limit = 10) {
+  console.log(`\n📍 ÚLTIMOS ${limit} REGISTROS GPS:`);
+  console.log('=' .repeat(80));
+  
+  db.all(`
+    SELECT 
+      id,
+      unit,
+      latitude,
+      longitude,
+      fix,
+      timestamp,
+      created,
+      syncStatus,
+      syncTimestamp
+    FROM gps_data 
+    ORDER BY id DESC 
+    LIMIT ?
+  `, [limit], (err, rows) => {
+    if (err) {
+      if (err.message.includes('no such table')) {
+        console.log('📭 Tabla GPS aún no existe. Se creará cuando ejecutes index.js');
+      } else {
+        console.error('Error:', err);
+      }
+      return;
+    }
+    
+    if (rows.length === 0) {
+      console.log('📭 No hay registros GPS almacenados');
+      return;
+    }
+    
+    rows.forEach(row => {
+      console.log(`\n🔹 GPS #${row.id} (${row.syncStatus}):`);
+      console.log(`   Unidad: ${row.unit}`);
+      console.log(`   Latitud: ${row.latitude}`);
+      console.log(`   Longitud: ${row.longitude}`);
+      console.log(`   Fix: ${row.fix}`);
+      console.log(`   Timestamp: ${row.timestamp}`);
+      console.log(`   Creado: ${row.created}`);
+      if (row.syncTimestamp) {
+        console.log(`   Sincronizado: ${row.syncTimestamp}`);
+      }
+    });
+  });
+}
+
 // Procesar argumentos de línea de comandos
 const args = process.argv.slice(2);
 
@@ -193,11 +264,20 @@ if (args.length === 0) {
     db.close();
     console.log('\n✅ Consulta completada');
   }, 500);
+} else if (args[0] === '--gps') {
+  // Mostrar datos GPS
+  const limit = args[1] ? parseInt(args[1]) : 20;
+  showGPSData(limit);
+  setTimeout(() => {
+    db.close();
+    console.log('\n✅ Consulta completada');
+  }, 500);
 } else {
   console.log('📊 Uso del script:');
   console.log('  node view-data.js                    # Estadísticas + últimos 5 eventos');
   console.log('  node view-data.js --all [limite]     # Mostrar eventos (por defecto 50)');
   console.log('  node view-data.js --beacon <MAC>     # Eventos de un beacon específico');
+  console.log('  node view-data.js --gps [limite]     # Mostrar datos GPS (por defecto 20)');
   console.log('  node view-data.js --stats            # Solo estadísticas');
   db.close();
 }
