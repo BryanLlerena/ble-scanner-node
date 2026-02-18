@@ -430,13 +430,37 @@
             </div>
         </div>
 
+        <!-- GPS HISTORY VIEW -->
+        <div id="view-gps-history" class="view-section">
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <h3>Historial GPS</h3>
+                    <button class="btn-primary" onclick="loadGpsHistory()">Actualizar</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Latitud</th>
+                            <th>Longitud</th>
+                        </tr>
+                    </thead>
+                    <tbody id="gpsHistoryTableBody">
+                        <tr>
+                            <td colspan="3">Cargando...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 
     <div id="notification" class="notification"></div>
 
     <script>
                 // --- LEAFLET MAP LOGIC ---
-                let gpsMap, gpsMarker;
+                let gpsMap, gpsMarker, gpsMapUserMoved = false, lastGpsLat = 0, lastGpsLon = 0;
                 function initGpsMap() {
                     if (gpsMap) return;
                     gpsMap = L.map('gpsMap').setView([0,0], 2);
@@ -445,22 +469,55 @@
                         attribution: '© OpenStreetMap'
                     }).addTo(gpsMap);
                     gpsMarker = L.marker([0,0]).addTo(gpsMap);
+                    gpsMap.on('movestart', function() { gpsMapUserMoved = true; });
                 }
-
                 async function updateGpsMap() {
                     try {
-                        const host = window.location.hostname;
-                        const res = await fetch(`http://${host}:3050/api/gps/latest`);
+                        const res = await fetch('/api/gps/latest');
                         if (!res.ok) throw new Error('No GPS');
                         const data = await res.json();
                         if (!gpsMap) initGpsMap();
                         const lat = parseFloat(data.latitude);
                         const lon = parseFloat(data.longitude);
-                        gpsMap.setView([lat, lon], 17);
+                        lastGpsLat = lat;
+                        lastGpsLon = lon;
                         gpsMarker.setLatLng([lat, lon]);
+                        if (!gpsMapUserMoved) {
+                            gpsMap.setView([lat, lon], 17);
+                        }
                         document.getElementById('gpsInfo').textContent = `Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)} | ${data.timestamp ? new Date(data.timestamp).toLocaleString() : ''}`;
                     } catch (e) {
                         document.getElementById('gpsInfo').textContent = 'No hay datos GPS recientes.';
+                    }
+                }
+                function recenterGpsMap() {
+                    if (lastGpsLat && lastGpsLon) {
+                        gpsMap.setView([lastGpsLat, lastGpsLon], 17);
+                        gpsMapUserMoved = false;
+                    }
+                }
+                async function loadGpsHistory() {
+                    try {
+                        const res = await fetch('/api/gps/history');
+                        const data = await res.json();
+                        const tbody = document.getElementById('gpsHistoryTableBody');
+                        tbody.innerHTML = '';
+                        if (data.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">No hay registros</td></tr>';
+                            return;
+                        }
+                        data.forEach(row => {
+                            const tr = document.createElement('tr');
+                            const date = new Date(row.timestamp).toLocaleString();
+                            tr.innerHTML = `
+                                <td>${date}</td>
+                                <td>${row.latitude}</td>
+                                <td>${row.longitude}</td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    } catch (e) {
+                        document.getElementById('gpsHistoryTableBody').innerHTML = '<tr><td colspan="3">Error cargando historial</td></tr>';
                     }
                 }
         // --- NAVIGATION LOGIC ---
