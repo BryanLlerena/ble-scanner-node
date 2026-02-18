@@ -449,7 +449,8 @@
 
                 async function updateGpsMap() {
                     try {
-                        const res = await fetch('http://localhost:3050/api/gps/latest');
+                        const host = window.location.hostname;
+                        const res = await fetch(`http://${host}:3050/api/gps/latest`);
                         if (!res.ok) throw new Error('No GPS');
                         const data = await res.json();
                         if (!gpsMap) initGpsMap();
