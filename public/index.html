@@ -291,11 +291,14 @@
 
     <!-- Sidebar -->
     <div class="sidebar">
-        <h2>System Dashboard</h2>
-        <div class="menu-item active" onclick="switchView('status')">📡 Estado Sistema</div>
-        <div class="menu-item" onclick="switchView('history')">📜 Historial WiFi</div>
-        <div class="menu-item" onclick="switchView('ble-history')">📶 Historial Beacons</div>
-        <div class="menu-item" onclick="switchView('config')">⚙️ Configuración</div>
+        <h2>VT-BOX Dashboard</h2>
+        <div class="menu">
+            <div class="menu-item active" onclick="switchView('status')">Estado Actual</div>
+            <div class="menu-item" onclick="switchView('history')">Historial WiFi</div>
+            <div class="menu-item" onclick="switchView('ble-history')">Historial Beacons</div>
+            <div class="menu-item" onclick="switchView('gps-history')">Historial GPS</div>
+            <div class="menu-item" onclick="switchView('config')">Configuración</div>
+        </div>
     </div>
 
     <!-- Main Content -->
@@ -531,6 +534,7 @@
             if (viewName === 'status') loadAllStatus();
             if (viewName === 'history') loadHistory();
             if (viewName === 'ble-history') loadBleHistory();
+            if (viewName === 'gps-history') loadGpsHistory();
             if (viewName === 'config') loadConfig();
         }
 

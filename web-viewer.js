@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+
 const cors = require('cors');
 
 const app = express();
@@ -12,7 +13,46 @@ const DB_FILE = process.env.DB_FILE || "beacons.db";
 // Middleware
 app.use(cors());
 app.use(express.json());
+
 app.use(express.static('public'));
+
+// --- API GPS DIRECTAMENTE AQUÍ ---
+// GET /api/gps/latest - Última posición GPS
+app.get('/api/gps/latest', (req, res) => {
+  db.get(
+    `SELECT * FROM gps_data ORDER BY timestamp DESC LIMIT 1`,
+    [],
+    (err, row) => {
+      if (err) {
+        console.error('Error consultando GPS:', err);
+        res.status(500).json({ error: 'Error consultando la base de datos' });
+        return;
+      }
+      if (!row) {
+        res.status(404).json({ error: 'No hay datos GPS' });
+        return;
+      }
+      res.json(row);
+    }
+  );
+});
+
+// GET /api/gps/history - Últimos N puntos GPS
+app.get('/api/gps/history', (req, res) => {
+  const limit = parseInt(req.query.limit) || 20;
+  db.all(
+    `SELECT * FROM gps_data ORDER BY timestamp DESC LIMIT ?`,
+    [limit],
+    (err, rows) => {
+      if (err) {
+        console.error('Error consultando historial GPS:', err);
+        res.status(500).json({ error: 'Error consultando la base de datos' });
+        return;
+      }
+      res.json(rows);
+    }
+  );
+});
 
 // Conectar a la base de datos
 const db = new sqlite3.Database(DB_FILE);
