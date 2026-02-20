@@ -69,8 +69,21 @@ let mqttClient = null;
 let db = null;
 
 // Variables para almacenar datos recientes
-let lastBeaconEvents = [];
+let lastBeaconData = null;
+let lastBeaconTimestamp = 0;
 let lastGPSData = null;
+// Cuando se detecta un beacon, guardar datos globalmente
+function onBeaconDetected(beaconMac, beaconUuid, beaconRssi, beaconType, beaconDistance, beaconName) {
+  lastBeaconData = {
+    beaconMac,
+    beaconUuid,
+    beaconRssi,
+    beaconType,
+    beaconDistance,
+    beaconName
+  };
+  lastBeaconTimestamp = Date.now();
+}
 
 // Configuración del cliente MQTT
 const mqttOptions = {
@@ -158,14 +171,19 @@ function readGPSData(callback) {
             };
             
             // Guardar en base de datos local
+              // Asociar beacon si fue detectado en los últimos 3 segundos
+              let beaconToSave = null;
+              if (lastBeaconData && (Date.now() - lastBeaconTimestamp <= 3000)) {
+                beaconToSave = lastBeaconData;
+              }
               saveGPSToDatabase(
                 lastGPSData,
-                typeof beaconMac !== 'undefined' ? beaconMac : null,
-                typeof beaconUuid !== 'undefined' ? beaconUuid : null,
-                typeof beaconRssi !== 'undefined' ? beaconRssi : null,
-                typeof beaconType !== 'undefined' ? beaconType : null,
-                typeof beaconDistance !== 'undefined' ? beaconDistance : null,
-                typeof beaconName !== 'undefined' ? beaconName : null
+                beaconToSave ? beaconToSave.beaconMac : null,
+                beaconToSave ? beaconToSave.beaconUuid : null,
+                beaconToSave ? beaconToSave.beaconRssi : null,
+                beaconToSave ? beaconToSave.beaconType : null,
+                beaconToSave ? beaconToSave.beaconDistance : null,
+                beaconToSave ? beaconToSave.beaconName : null
               );
             
             gpsDataReceived = true;
