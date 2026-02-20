@@ -444,18 +444,17 @@ noble.on('discover', peripheral => {
       // Detectar beacon y asociar al GPS
       const mac = deviceData.mac;
       const rssi = deviceData.rssi;
-      const name = deviceData.name || '';
-      let uuid = '';
-      let type = '';
-      let distance = deviceData.distance;
-      let beaconName = name;
-      // Calcular distancia (ejemplo)
-      distance = Math.abs(rssi) < 100 ? (1 / Math.abs(rssi)) : 0;
+      const uuid = deviceData.uuid || '';
+      const type = deviceData.type || 'BLE';
+      const distance = deviceData.distanceInM || 0;
+      const beaconName = deviceData.name || '';
+      
       // Llamar a onBeaconDetected para asociar beacon al GPS
       try {
         const syncMqtt = require('./sync-mqtt');
         if (typeof syncMqtt.onBeaconDetected === 'function') {
           syncMqtt.onBeaconDetected(mac, uuid, rssi, type, distance, beaconName);
+          logger.debug(`📍 Beacon asociado al GPS: MAC=${mac}, UUID=${uuid}, RSSI=${rssi}`);
         }
       } catch (err) {
         logger.warn('No se pudo asociar beacon al GPS:', err.message);

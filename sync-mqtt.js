@@ -83,6 +83,7 @@ function onBeaconDetected(beaconMac, beaconUuid, beaconRssi, beaconType, beaconD
     beaconName
   };
   lastBeaconTimestamp = Date.now();
+  logger.info(`🔵 Beacon guardado para asociar con GPS: MAC=${beaconMac}, Timestamp=${lastBeaconTimestamp}`);
 }
 
 // Configuración del cliente MQTT
@@ -126,7 +127,8 @@ function saveGPSToDatabase(gpsData, beaconMac, beaconUuid, beaconRssi, beaconTyp
     if (err) {
       logger.error('❌ Error guardando GPS en BD:', err.message);
     } else {
-      logger.info(`📍 GPS guardado localmente: lat=${gpsData.latitude.toFixed(4)}, lon=${gpsData.longitude.toFixed(4)}`);
+      const beaconInfo = beaconMac ? ` + Beacon(MAC=${beaconMac})` : '';
+      logger.info(`📍 GPS guardado localmente: lat=${gpsData.latitude.toFixed(4)}, lon=${gpsData.longitude.toFixed(4)}${beaconInfo}`);
     }
   });
 }
@@ -173,8 +175,12 @@ function readGPSData(callback) {
             // Guardar en base de datos local
               // Asociar beacon si fue detectado en los últimos 10 segundos
               let beaconToSave = null;
-              if (lastBeaconData && (Date.now() - lastBeaconTimestamp <= 10000)) {
+              const timeDiff = Date.now() - lastBeaconTimestamp;
+              if (lastBeaconData && (timeDiff <= 10000)) {
                 beaconToSave = lastBeaconData;
+                logger.info(`✅ GPS asociado con beacon: MAC=${beaconToSave.beaconMac}, tiempo transcurrido=${timeDiff}ms`);
+              } else {
+                logger.debug(`⚪ GPS sin beacon asociado (tiempo transcurrido=${timeDiff}ms, límite=10000ms)`);
               }
               saveGPSToDatabase(
                 lastGPSData,
@@ -566,5 +572,6 @@ module.exports = {
   sendBeaconDataToMQTT,
   sendGPSDataToMQTT,
   initMQTT,
-  initDatabase
+  initDatabase,
+  onBeaconDetected
 };
