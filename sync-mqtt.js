@@ -107,6 +107,9 @@ async function getWifiInfo() {
 // Función para guardar GPS en base de datos local
 function saveGPSToDatabase(gpsData, beaconMac, beaconUuid, beaconRssi, beaconType, beaconDistance, beaconName) {
   const timestamp = new Date().toISOString();
+  
+  logger.debug(`💾 Guardando GPS con parámetros: beaconMac=${beaconMac}, beaconUuid=${beaconUuid}, beaconRssi=${beaconRssi}`);
+  
   db.run(`
     INSERT INTO gps_data (unit, latitude, longitude, fix, timestamp, created, syncStatus, beaconMac, beaconUuid, beaconRssi, beaconType, beaconDistance, beaconName)
     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
@@ -126,6 +129,7 @@ function saveGPSToDatabase(gpsData, beaconMac, beaconUuid, beaconRssi, beaconTyp
   ], (err) => {
     if (err) {
       logger.error('❌ Error guardando GPS en BD:', err.message);
+      logger.error('Detalles del error:', err);
     } else {
       const beaconInfo = beaconMac ? ` + Beacon(MAC=${beaconMac})` : '';
       logger.info(`📍 GPS guardado localmente: lat=${gpsData.latitude.toFixed(4)}, lon=${gpsData.longitude.toFixed(4)}${beaconInfo}`);
@@ -374,6 +378,17 @@ function initDatabase() {
         return;
       }
       logger.info('📊 Base de datos conectada para MQTT');
+      
+      // Asegurar que las columnas de beacon existan en gps_data
+      db.run(`ALTER TABLE gps_data ADD COLUMN beaconMac TEXT`, () => {});
+      db.run(`ALTER TABLE gps_data ADD COLUMN beaconUuid TEXT`, () => {});
+      db.run(`ALTER TABLE gps_data ADD COLUMN beaconRssi INTEGER`, () => {});
+      db.run(`ALTER TABLE gps_data ADD COLUMN beaconType TEXT`, () => {});
+      db.run(`ALTER TABLE gps_data ADD COLUMN beaconDistance REAL`, () => {});
+      db.run(`ALTER TABLE gps_data ADD COLUMN beaconName TEXT`, () => {});
+      
+      logger.debug('✅ Migraciones de columnas beacon ejecutadas');
+      
       resolve(db);
     });
   });
@@ -466,6 +481,17 @@ function initDatabase() {
         return;
       }
       logger.info('📊 Base de datos conectada para MQTT');
+      
+      // Asegurar que las columnas de beacon existan en gps_data
+      db.run(`ALTER TABLE gps_data ADD COLUMN beaconMac TEXT`, () => {});
+      db.run(`ALTER TABLE gps_data ADD COLUMN beaconUuid TEXT`, () => {});
+      db.run(`ALTER TABLE gps_data ADD COLUMN beaconRssi INTEGER`, () => {});
+      db.run(`ALTER TABLE gps_data ADD COLUMN beaconType TEXT`, () => {});
+      db.run(`ALTER TABLE gps_data ADD COLUMN beaconDistance REAL`, () => {});
+      db.run(`ALTER TABLE gps_data ADD COLUMN beaconName TEXT`, () => {});
+      
+      logger.debug('✅ Migraciones de columnas beacon ejecutadas');
+      
       resolve(db);
     });
   });
