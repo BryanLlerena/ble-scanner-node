@@ -439,26 +439,30 @@ noble.on('discover', peripheral => {
     logger.debug('   ---');
   }
 
-  // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
-    if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
-      // Detectar beacon y asociar al GPS
-      const mac = deviceData.mac;
-      const rssi = deviceData.rssi;
-      const uuid = deviceData.uuid || '';
-      const type = deviceData.type || 'BLE';
-      const distance = deviceData.distanceInM || 0;
-      const beaconName = deviceData.name || '';
-      
-      // Llamar a onBeaconDetected para asociar beacon al GPS
-      try {
-        const syncMqtt = require('./sync-mqtt');
-        if (typeof syncMqtt.onBeaconDetected === 'function') {
-          syncMqtt.onBeaconDetected(mac, uuid, rssi, type, distance, beaconName);
-          logger.debug(`📍 Beacon asociado al GPS: MAC=${mac}, UUID=${uuid}, RSSI=${rssi}`);
-        }
-      } catch (err) {
-        logger.warn('No se pudo asociar beacon al GPS:', err.message);
+  // Solo asociar beacon al GPS si cumple con el filtro MAC
+  if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
+    // Detectar beacon y asociar al GPS
+    const mac = deviceData.mac;
+    const rssi = deviceData.rssi;
+    const uuid = deviceData.uuid || '';
+    const type = deviceData.type || 'BLE';
+    const distance = deviceData.distanceInM || 0;
+    const beaconName = deviceData.name || '';
+    
+    // Llamar a onBeaconDetected para asociar beacon al GPS
+    try {
+      const syncMqtt = require('./sync-mqtt');
+      if (typeof syncMqtt.onBeaconDetected === 'function') {
+        syncMqtt.onBeaconDetected(mac, uuid, rssi, type, distance, beaconName);
+        logger.debug(`📍 Beacon asociado al GPS: MAC=${mac}, UUID=${uuid}, RSSI=${rssi}`);
       }
+    } catch (err) {
+      logger.warn('No se pudo asociar beacon al GPS:', err.message);
+    }
+  }
+  
+  // Procesar todos los beacons para el sistema de eventos
+  if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
     detectedDevicesCache.set(deviceData.deviceId, deviceData);
 
     // Actualizar mapa en vivo (sin filtro de distancia, solo MAC)
