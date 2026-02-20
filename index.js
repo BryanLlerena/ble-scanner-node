@@ -440,7 +440,26 @@ noble.on('discover', peripheral => {
   }
 
   // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
-  if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
+    if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
+      // Detectar beacon y asociar al GPS
+      const mac = deviceData.mac;
+      const rssi = deviceData.rssi;
+      const name = deviceData.name || '';
+      let uuid = '';
+      let type = '';
+      let distance = deviceData.distance;
+      let beaconName = name;
+      // Calcular distancia (ejemplo)
+      distance = Math.abs(rssi) < 100 ? (1 / Math.abs(rssi)) : 0;
+      // Llamar a onBeaconDetected para asociar beacon al GPS
+      try {
+        const syncMqtt = require('./sync-mqtt');
+        if (typeof syncMqtt.onBeaconDetected === 'function') {
+          syncMqtt.onBeaconDetected(mac, uuid, rssi, type, distance, beaconName);
+        }
+      } catch (err) {
+        logger.warn('No se pudo asociar beacon al GPS:', err.message);
+      }
     detectedDevicesCache.set(deviceData.deviceId, deviceData);
 
     // Actualizar mapa en vivo (sin filtro de distancia, solo MAC)
