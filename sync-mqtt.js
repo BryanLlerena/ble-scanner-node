@@ -146,7 +146,15 @@ function readGPSData(callback) {
             };
             
             // Guardar en base de datos local
-              saveGPSToDatabase(lastGPSData, beaconMac, beaconUuid, beaconRssi, beaconType, beaconDistance, beaconName);
+              saveGPSToDatabase(
+                lastGPSData,
+                typeof beaconMac !== 'undefined' ? beaconMac : null,
+                typeof beaconUuid !== 'undefined' ? beaconUuid : null,
+                typeof beaconRssi !== 'undefined' ? beaconRssi : null,
+                typeof beaconType !== 'undefined' ? beaconType : null,
+                typeof beaconDistance !== 'undefined' ? beaconDistance : null,
+                typeof beaconName !== 'undefined' ? beaconName : null
+              );
             
             gpsDataReceived = true;
             clearTimeout(timeout);
