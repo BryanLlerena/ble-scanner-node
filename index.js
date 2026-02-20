@@ -72,7 +72,13 @@ db.serialize(() => {
     timestamp TEXT,
     created TEXT,
     syncStatus TEXT DEFAULT 'pending',
-    syncTimestamp TEXT
+    syncTimestamp TEXT,
+    beaconMac TEXT,
+    beaconUuid TEXT,
+    beaconRssi INTEGER,
+    beaconType TEXT,
+    beaconDistance REAL,
+    beaconName TEXT
   )`);
   
   db.run(`CREATE INDEX IF NOT EXISTS idx_gps_syncStatus ON gps_data(syncStatus)`);

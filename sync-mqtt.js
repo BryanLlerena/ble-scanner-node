@@ -94,9 +94,9 @@ async function getWifiInfo() {
 function saveGPSToDatabase(gpsData) {
   const timestamp = new Date().toISOString();
   
-  db.run(`
-    INSERT INTO gps_data (unit, latitude, longitude, fix, timestamp, created, syncStatus)
-    VALUES (?, ?, ?, ?, ?, ?, 'pending')
+    db.run(`
+      INSERT INTO gps_data (unit, latitude, longitude, fix, timestamp, created, syncStatus, beaconMac, beaconUuid, beaconRssi, beaconType, beaconDistance, beaconName)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
   `, [UNIT, gpsData.latitude, gpsData.longitude, gpsData.fix, timestamp, timestamp], (err) => {
     if (err) {
       logger.error('❌ Error guardando GPS en BD:', err.message);
@@ -146,7 +146,7 @@ function readGPSData(callback) {
             };
             
             // Guardar en base de datos local
-            saveGPSToDatabase(lastGPSData);
+              saveGPSToDatabase(lastGPSData, beaconMac, beaconUuid, beaconRssi, beaconType, beaconDistance, beaconName);
             
             gpsDataReceived = true;
             clearTimeout(timeout);

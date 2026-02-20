@@ -512,8 +512,12 @@
                         data.forEach(row => {
                             const tr = document.createElement('tr');
                             const date = new Date(row.timestamp).toLocaleString();
+                            let beaconInfo = '';
+                            if (row.beaconMac) {
+                                beaconInfo = `<br><span style='color:#2563eb;font-size:0.95em'>Beacon: ${row.beaconMac} (${row.beaconName || ''}) UUID: ${row.beaconUuid || ''} RSSI: ${row.beaconRssi || ''} Tipo: ${row.beaconType || ''} Distancia: ${row.beaconDistance || ''}</span>`;
+                            }
                             tr.innerHTML = `
-                                <td>${date}</td>
+                                <td>${date}${beaconInfo}</td>
                                 <td>${row.latitude}</td>
                                 <td>${row.longitude}</td>
                             `;
