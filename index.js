@@ -72,14 +72,16 @@ db.serialize(() => {
     timestamp TEXT,
     created TEXT,
     syncStatus TEXT DEFAULT 'pending',
-    syncTimestamp TEXT,
-    beaconMac TEXT,
-    beaconUuid TEXT,
-    beaconRssi INTEGER,
-    beaconType TEXT,
-    beaconDistance REAL,
-    beaconName TEXT
+    syncTimestamp TEXT
   )`);
+
+  // Migración: agregar columnas beacon si no existen
+  db.run(`ALTER TABLE gps_data ADD COLUMN beaconMac TEXT`, () => {});
+  db.run(`ALTER TABLE gps_data ADD COLUMN beaconUuid TEXT`, () => {});
+  db.run(`ALTER TABLE gps_data ADD COLUMN beaconRssi INTEGER`, () => {});
+  db.run(`ALTER TABLE gps_data ADD COLUMN beaconType TEXT`, () => {});
+  db.run(`ALTER TABLE gps_data ADD COLUMN beaconDistance REAL`, () => {});
+  db.run(`ALTER TABLE gps_data ADD COLUMN beaconName TEXT`, () => {});
   
   db.run(`CREATE INDEX IF NOT EXISTS idx_gps_syncStatus ON gps_data(syncStatus)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_gps_created ON gps_data(created)`);
