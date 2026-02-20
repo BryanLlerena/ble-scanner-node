@@ -171,9 +171,9 @@ function readGPSData(callback) {
             };
             
             // Guardar en base de datos local
-              // Asociar beacon si fue detectado en los últimos 5 segundos
+              // Asociar beacon si fue detectado en los últimos 10 segundos
               let beaconToSave = null;
-              if (lastBeaconData && (Date.now() - lastBeaconTimestamp <= 5000)) {
+              if (lastBeaconData && (Date.now() - lastBeaconTimestamp <= 10000)) {
                 beaconToSave = lastBeaconData;
               }
               saveGPSToDatabase(
