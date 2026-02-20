@@ -91,13 +91,25 @@ async function getWifiInfo() {
 }
 
 // Función para guardar GPS en base de datos local
-function saveGPSToDatabase(gpsData) {
+function saveGPSToDatabase(gpsData, beaconMac, beaconUuid, beaconRssi, beaconType, beaconDistance, beaconName) {
   const timestamp = new Date().toISOString();
-  
-    db.run(`
-      INSERT INTO gps_data (unit, latitude, longitude, fix, timestamp, created, syncStatus, beaconMac, beaconUuid, beaconRssi, beaconType, beaconDistance, beaconName)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
-  `, [UNIT, gpsData.latitude, gpsData.longitude, gpsData.fix, timestamp, timestamp], (err) => {
+  db.run(`
+    INSERT INTO gps_data (unit, latitude, longitude, fix, timestamp, created, syncStatus, beaconMac, beaconUuid, beaconRssi, beaconType, beaconDistance, beaconName)
+    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+  `, [
+    UNIT,
+    gpsData.latitude,
+    gpsData.longitude,
+    gpsData.fix,
+    timestamp,
+    timestamp,
+    beaconMac,
+    beaconUuid,
+    beaconRssi,
+    beaconType,
+    beaconDistance,
+    beaconName
+  ], (err) => {
     if (err) {
       logger.error('❌ Error guardando GPS en BD:', err.message);
     } else {
