@@ -48,6 +48,33 @@ const dbBeacons = new sqlite3.Database(BEACONS_DB_FILE, sqlite3.OPEN_READONLY, (
   else console.log('✅ Conectado a beacons.db para lectura');
 });
 
+// Conectar a la base de datos GPS (usa la misma beacons.db)
+const dbGps = dbBeacons;
+// --- API ENDPOINTS (GPS DATA) ---
+
+// GET /api/gps/latest - Última posición GPS
+app.get('/api/gps/latest', (req, res) => {
+  dbGps.get('SELECT * FROM gps_data ORDER BY timestamp DESC LIMIT 1', (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: 'Error consultando la base de datos GPS' });
+    }
+    if (!row) {
+      return res.status(404).json({ error: 'No hay datos de GPS' });
+    }
+    res.json(row);
+  });
+});
+
+// GET /api/gps/history - Historial de GPS (últimos 100)
+app.get('/api/gps/history', (req, res) => {
+  dbGps.all('SELECT * FROM gps_data ORDER BY timestamp DESC LIMIT 100', (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: 'Error consultando la base de datos GPS' });
+    }
+    res.json(rows);
+  });
+});
+
 // --- FUNCIONES AUXILIARES (.ENV) ---
 function parseEnv(content) {
   const env = [];

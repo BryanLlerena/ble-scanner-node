@@ -21,6 +21,9 @@
             --bg-secondary: #f1f5f9;
         }
 
+        /* Leaflet custom height for map */
+        #gpsMap { min-height: 350px; }
+
         .dark-mode {
             --bg: #0f172a;
             --sidebar-bg: #1e293b;
@@ -288,11 +291,14 @@
 
     <!-- Sidebar -->
     <div class="sidebar">
-        <h2>System Dashboard</h2>
-        <div class="menu-item active" onclick="switchView('status')">📡 Estado Sistema</div>
-        <div class="menu-item" onclick="switchView('history')">📜 Historial WiFi</div>
-        <div class="menu-item" onclick="switchView('ble-history')">📶 Historial Beacons</div>
-        <div class="menu-item" onclick="switchView('config')">⚙️ Configuración</div>
+        <h2>VT-BOX Dashboard</h2>
+        <div class="menu">
+            <div class="menu-item active" onclick="switchView('status')">Estado Actual</div>
+            <div class="menu-item" onclick="switchView('history')">Historial WiFi</div>
+            <div class="menu-item" onclick="switchView('ble-history')">Historial Beacons</div>
+            <div class="menu-item" onclick="switchView('gps-history')">Historial GPS</div>
+            <div class="menu-item" onclick="switchView('config')">Configuración</div>
+        </div>
     </div>
 
     <!-- Main Content -->
@@ -344,6 +350,13 @@
                         </tr>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- GPS MAPA EN TIEMPO REAL -->
+            <div class="card">
+                <h3>Ubicación GPS Actual</h3>
+                <div id="gpsMap" style="width:100%;height:350px;background:#e5e7eb;border-radius:8px;"></div>
+                <div id="gpsInfo" style="margin-top:10px;color:var(--text-light);font-size:0.95em;">Cargando ubicación...</div>
             </div>
 
             <div class="actions">
@@ -420,11 +433,96 @@
             </div>
         </div>
 
+        <!-- GPS HISTORY VIEW -->
+        <div id="view-gps-history" class="view-section">
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <h3>Historial GPS</h3>
+                    <button class="btn-primary" onclick="loadGpsHistory()">Actualizar</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Latitud</th>
+                            <th>Longitud</th>
+                        </tr>
+                    </thead>
+                    <tbody id="gpsHistoryTableBody">
+                        <tr>
+                            <td colspan="3">Cargando...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 
     <div id="notification" class="notification"></div>
 
     <script>
+                // --- LEAFLET MAP LOGIC ---
+                let gpsMap, gpsMarker, gpsMapUserMoved = false, lastGpsLat = 0, lastGpsLon = 0;
+                function initGpsMap() {
+                    if (gpsMap) return;
+                    gpsMap = L.map('gpsMap').setView([0,0], 2);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '© OpenStreetMap'
+                    }).addTo(gpsMap);
+                    gpsMarker = L.marker([0,0]).addTo(gpsMap);
+                    gpsMap.on('movestart', function() { gpsMapUserMoved = true; });
+                }
+                async function updateGpsMap() {
+                    try {
+                        const res = await fetch('/api/gps/latest');
+                        if (!res.ok) throw new Error('No GPS');
+                        const data = await res.json();
+                        if (!gpsMap) initGpsMap();
+                        const lat = parseFloat(data.latitude);
+                        const lon = parseFloat(data.longitude);
+                        lastGpsLat = lat;
+                        lastGpsLon = lon;
+                        gpsMarker.setLatLng([lat, lon]);
+                        if (!gpsMapUserMoved) {
+                            gpsMap.setView([lat, lon], 17);
+                        }
+                        document.getElementById('gpsInfo').textContent = `Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)} | ${data.timestamp ? new Date(data.timestamp).toLocaleString() : ''}`;
+                    } catch (e) {
+                        document.getElementById('gpsInfo').textContent = 'No hay datos GPS recientes.';
+                    }
+                }
+                function recenterGpsMap() {
+                    if (lastGpsLat && lastGpsLon) {
+                        gpsMap.setView([lastGpsLat, lastGpsLon], 17);
+                        gpsMapUserMoved = false;
+                    }
+                }
+                async function loadGpsHistory() {
+                    try {
+                        const res = await fetch('/api/gps/history');
+                        const data = await res.json();
+                        const tbody = document.getElementById('gpsHistoryTableBody');
+                        tbody.innerHTML = '';
+                        if (data.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">No hay registros</td></tr>';
+                            return;
+                        }
+                        data.forEach(row => {
+                            const tr = document.createElement('tr');
+                            const date = new Date(row.timestamp).toLocaleString();
+                            tr.innerHTML = `
+                                <td>${date}</td>
+                                <td>${row.latitude}</td>
+                                <td>${row.longitude}</td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    } catch (e) {
+                        document.getElementById('gpsHistoryTableBody').innerHTML = '<tr><td colspan="3">Error cargando historial</td></tr>';
+                    }
+                }
         // --- NAVIGATION LOGIC ---
         function switchView(viewName) {
             document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
@@ -436,6 +534,7 @@
             if (viewName === 'status') loadAllStatus();
             if (viewName === 'history') loadHistory();
             if (viewName === 'ble-history') loadBleHistory();
+            if (viewName === 'gps-history') loadGpsHistory();
             if (viewName === 'config') loadConfig();
         }
 
@@ -653,7 +752,22 @@
         loadTheme();
         loadAllStatus();
         setInterval(loadAllStatus, 2000); // 2s refresh for live view
+        // GPS MAP INIT
+        let gpsMapLoaded = false;
+        function refreshGpsMap() {
+            if (!gpsMapLoaded && document.getElementById('gpsMap')) {
+                initGpsMap();
+                gpsMapLoaded = true;
+            }
+            updateGpsMap();
+        }
+        setInterval(refreshGpsMap, 2000);
     </script>
 </body>
 
+</body>
+
+<!-- Leaflet.js CSS y JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 </html>
