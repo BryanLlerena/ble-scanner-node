@@ -5,7 +5,7 @@ async function sendGPSDataToMQTT() {
       logger.debug('📡 Cliente MQTT no conectado, saltando envío GPS');
       return;
     }
-    
+
     if (!lastGPSData) {
       logger.debug('📍 No hay datos GPS para enviar');
       return;
@@ -47,8 +47,8 @@ async function sendGPSDataToMQTT() {
 require('dotenv').config();
 const mqtt = require('mqtt');
 const sqlite3 = require('sqlite3').verbose();
-const logger = require('./logger');
-const wifiUtils = require('./wifi-utils');
+const logger = require('../utils/logger');
+const wifiUtils = require('../wifi/wifi-utils');
 const { v4: uuidv4 } = require('uuid');
 const { spawn } = require('child_process');
 
@@ -60,7 +60,7 @@ const MQTT_BROKER = process.env.MQTT_BROKER || 'mqtt://localhost:1883';
 const MQTT_CLIENT_ID = `${uuidv4()}_${UNIT}`;
 const MQTT_USERNAME = process.env.MQTT_USERNAME || null;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD || null;
-const MQTT_INTERVAL = parseInt(process.env.MQTT_INTERVAL) || 60000;
+const MQTT_INTERVAL = (parseInt(process.env.MQTT_INTERVAL) || 60) * 1000;
 const MQTT_TOPIC = `${COMPANY}/unit/${UNIT.toLowerCase()}/tracking`;
 const MQTT_GPS_TOPIC = `${COMPANY}/unit/${UNIT.toLowerCase()}/gps`;
 
@@ -93,7 +93,7 @@ async function getWifiInfo() {
 // Función para guardar GPS en base de datos local
 function saveGPSToDatabase(gpsData) {
   const timestamp = new Date().toISOString();
-  
+
   db.run(`
     INSERT INTO gps_data (unit, latitude, longitude, fix, timestamp, created, syncStatus)
     VALUES (?, ?, ?, ?, ?, ?, 'pending')
@@ -144,10 +144,10 @@ function readGPSData(callback) {
               fix: parts[6],
               timestamp: Date.now()
             };
-            
+
             // Guardar en base de datos local
             saveGPSToDatabase(lastGPSData);
-            
+
             gpsDataReceived = true;
             clearTimeout(timeout);
             callback(lastGPSData);
@@ -482,7 +482,7 @@ async function startMQTTService() {
       readGPSData(() => {
         sendGPSDataToMQTT();
       });
-      
+
       // Enviar beacons a topic tracking
       sendBeaconDataToMQTT();
     }, 1000);

@@ -16,7 +16,7 @@ app.use(express.static('public')); // Servir archivos estáticos desde 'public'
 
 const PORT = process.env.WIFI_PORT || 3035;
 const DB_FILE = process.env.WIFI_DB_FILE || 'wifi_status.db';
-const ENV_FILE = path.join(__dirname, '.env');
+const ENV_FILE = path.join(__dirname, '../../.env');
 const BEACONS_DB_FILE = process.env.DB_FILE || 'beacons.db';
 
 // Configuración MQTT
@@ -398,7 +398,7 @@ setInterval(async () => {
 // Servir index.html (SPA) para cualquier ruta no-API
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, '../../public', 'index.html'));
   } else {
     res.status(404).json({ error: 'Endpoint not found' });
   }

@@ -2,12 +2,12 @@
 require('dotenv').config();
 const sqlite3 = require('sqlite3').verbose();
 const { syncBeaconEvents, syncGPSData } = require('./sync');
-const logger = require('./logger');
+const logger = require('../utils/logger');
 
 // Configuración desde variables de entorno
 const DB_FILE = process.env.DB_FILE || "beacons.db";
-const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || 30000;
-const INITIAL_SYNC_DELAY = parseInt(process.env.INITIAL_SYNC_DELAY) || 10000;
+const SYNC_INTERVAL = (parseInt(process.env.SYNC_INTERVAL) || 30) * 1000;
+const INITIAL_SYNC_DELAY = (parseInt(process.env.INITIAL_SYNC_DELAY) || 10) * 1000;
 
 logger.info('🔄 Iniciando proceso de sincronización independiente');
 logger.info('🔧 Configuración de sincronización:');
@@ -31,24 +31,24 @@ async function runSync() {
 // Función para limpiar datos antiguos enviados (older than 7 days)
 function cleanupOldSentData() {
   const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-  
+
   // Limpiar beacons antiguos
   db.run(`
     DELETE FROM beacon_events 
     WHERE syncStatus = 'sent' AND created < ?
-  `, [sevenDaysAgo], function(err) {
+  `, [sevenDaysAgo], function (err) {
     if (err) {
       logger.error('❌ Error limpiando beacons antiguos:', err);
     } else if (this.changes > 0) {
       logger.info(`🧹 Limpieza: ${this.changes} beacons antiguos eliminados`);
     }
   });
-  
+
   // Limpiar GPS antiguos
   db.run(`
     DELETE FROM gps_data 
     WHERE syncStatus = 'sent' AND created < ?
-  `, [sevenDaysAgo], function(err) {
+  `, [sevenDaysAgo], function (err) {
     if (err) {
       logger.error('❌ Error limpiando GPS antiguos:', err);
     } else if (this.changes > 0) {

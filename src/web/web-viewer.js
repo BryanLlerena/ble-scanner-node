@@ -19,20 +19,20 @@ const db = new sqlite3.Database(DB_FILE);
 
 // Ruta principal - servir el HTML
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, '../../public', 'index.html'));
 });
 
 // API para obtener todos los eventos con filtros
 app.get('/api/events', (req, res) => {
-  const { 
-    unit, 
-    beaconMac, 
-    eventState, 
-    syncStatus, 
-    startDate, 
-    endDate, 
+  const {
+    unit,
+    beaconMac,
+    eventState,
+    syncStatus,
+    startDate,
+    endDate,
     limit = 100,
-    offset = 0 
+    offset = 0
   } = req.query;
 
   let query = `
@@ -130,7 +130,7 @@ app.get('/api/events', (req, res) => {
         ...row,
         rssiCount,
         rssiDiscardCount,
-        duration: row.f_final && row.f_inicio ? 
+        duration: row.f_final && row.f_inicio ?
           Math.round((new Date(row.f_final) - new Date(row.f_inicio)) / 1000) : 0
       };
     });
@@ -225,7 +225,7 @@ app.get('/api/events/:id', (req, res) => {
         ...row,
         rssiArray,
         rssiDiscardArray,
-        duration: row.f_final && row.f_inicio ? 
+        duration: row.f_final && row.f_inicio ?
           Math.round((new Date(row.f_final) - new Date(row.f_inicio)) / 1000) : 0
       };
 

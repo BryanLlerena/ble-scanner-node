@@ -2,8 +2,8 @@
 require('dotenv').config();
 const https = require('https');
 const http = require('http');
-const logger = require('./logger');
-const wifiUtils = require('./wifi-utils');
+const logger = require('../utils/logger');
+const wifiUtils = require('../wifi/wifi-utils');
 
 // Configuración desde variables de entorno
 const UNIT = process.env.UNIT || "TEST_UNIT";
@@ -269,7 +269,7 @@ async function sendNewBeaconEvents(db) {
   const BATCH_SIZE = 500;
   let totalSent = 0;
   let wifiInfo = { wap: "", wap_mac: "" };
-  
+
   try {
     await getWifiInfo().then(info => {
       wifiInfo.wap = info.ssid;
@@ -305,13 +305,13 @@ async function sendNewBeaconEvents(db) {
 
         totalSent += pendingEvents.length;
         logger.info(`✅ Lote enviado: ${pendingEvents.length} beacons (Total: ${totalSent})`);
-        
+
         // Si envió menos del lote completo, ya no hay más pendientes
         if (pendingEvents.length < BATCH_SIZE) {
           logger.info(`✅ Sincronización beacons completada: ${totalSent} eventos enviados`);
           return { success: true, sent: totalSent };
         }
-        
+
         // Continuar con siguiente lote
         continue;
       } else {
@@ -463,7 +463,7 @@ async function syncGPSData(db) {
   const BATCH_SIZE = 500; // Enviar máximo 500 por vez
   let totalSent = 0;
   let wifiInfo = { wap: "", wap_mac: "" };
-  
+
   try {
     await getWifiInfo().then(info => {
       wifiInfo.wap = info.ssid;
@@ -510,13 +510,13 @@ async function syncGPSData(db) {
 
         totalSent += pendingGPS.length;
         logger.info(`✅ Lote enviado: ${pendingGPS.length} GPS (Total: ${totalSent})`);
-        
+
         // Si envió menos del lote completo, ya no hay más pendientes
         if (pendingGPS.length < BATCH_SIZE) {
           logger.info(`✅ Sincronización GPS completada: ${totalSent} registros enviados`);
           return { success: true, sent: totalSent };
         }
-        
+
         // Continuar con siguiente lote
         continue;
       } else {
