@@ -2,7 +2,7 @@
   "name": "ble-scanner-node",
   "version": "1.0.0",
   "description": "Escaneo BLE y guardado en SQLite para Raspberry Pi",
-  "main": "index.js",
+  "main": "src/beacons/index.js",
   "scripts": {
     "start": "node src/beacons/index.js",
     "view": "node src/db/view-data.js",
