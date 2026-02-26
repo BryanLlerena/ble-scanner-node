@@ -470,8 +470,8 @@ async function syncGPSData(db) {
       wifiInfo.wap_mac = info.bssid;
     }).catch(console.error);
 
-    // Configurar endpoint GPS
-    const GPS_ENDPOINT = `${API_BASE_URL}/gps-data`;
+    // Configurar endpoint GPS (Corrige 404 error)
+    const GPS_ENDPOINT = `${API_BASE_URL}/beacon-track/gps`;
 
     // Enviar en lotes hasta que no haya más pendientes
     while (true) {

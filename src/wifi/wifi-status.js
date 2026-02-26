@@ -179,9 +179,12 @@ app.delete('/api/wifi/history', (req, res) => {
   });
 });
 
-app.get('/api/wifi/status', async (req, res) => {
-  const status = await getWifiStatus();
-  res.json(status);
+// Cache global para el estado de WiFi
+let currentWifiStatusCache = { status: 'disconnected', ssid: '', bssid: '' };
+
+app.get('/api/wifi/status', (req, res) => {
+  // Retornar caché en lugar de bloquear el API con llamadas OS (`nmcli`, etc.)
+  res.json(currentWifiStatusCache);
 });
 
 app.get('/api/wifi/history', (req, res) => {
@@ -371,6 +374,10 @@ initMQTT();
 // Bucle principal de monitoreo (DB + lógica de internet) - 10 segundos
 setInterval(async () => {
   const status = await getWifiStatus();
+
+  // Actualizar caché para la interfaz web (evita llamadas pesadas por request)
+  currentWifiStatusCache = status;
+
   let online = false;
 
   if (status.status === 'connected') {

@@ -751,7 +751,11 @@
         // Init
         loadTheme();
         loadAllStatus();
-        setInterval(loadAllStatus, 2000); // 2s refresh for live view
+        
+        // Polling independiente
+        setInterval(loadLiveBle, 1000);         // Beacons cada 1 segundo (rápido)
+        setInterval(loadCurrentStatus, 5000);   // WiFi cada 5 segundos (pesado)
+
         // GPS MAP INIT
         let gpsMapLoaded = false;
         function refreshGpsMap() {
@@ -761,7 +765,7 @@
             }
             updateGpsMap();
         }
-        setInterval(refreshGpsMap, 2000);
+        setInterval(refreshGpsMap, 2000);       // GPS cada 2 segundos
     </script>
 </body>
 
