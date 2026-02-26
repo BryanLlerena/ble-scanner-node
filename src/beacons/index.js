@@ -466,6 +466,21 @@ noble.on('discover', peripheral => {
   }
 });
 
+// Manejo de errores nativos de noble (como la desconexión abrupta del USB o ENODEV)
+noble.on('error', (err) => {
+  logger.error(`❌ Error emitido por noble: ${err.message}`);
+  if (err.message && err.message.includes('ENODEV')) {
+    logger.error('🔄 Dispositivo Bluetooth no encontrado (ENODEV). Reiniciando servicio...');
+    require('child_process').exec('systemctl restart attach-bluetooth.service', (error, stdout, stderr) => {
+      if (error) {
+        logger.error(`❌ Error al ejecutar el reinicio de Bluetooth: ${error.message}`);
+      } else {
+        logger.info('✅ Comando de reinicio de Bluetooth enviado con éxito tras ENODEV.');
+      }
+    });
+  }
+});
+
 // Función para procesar dispositivos acumulados (similar a tu lógica React Native)
 async function processDetectedDevices() {
   if (detectedDevicesCache.size === 0) return;
@@ -518,6 +533,25 @@ setInterval(processDetectedDevices, 1000);
 setInterval(closeExpiredBeaconEvents, 30000);
 
 // Sincronización ahora manejada por proceso independiente sync-processor.js
+
+// Manejo de excepciones no capturadas (ej. fallos críticos en la inicialización de Bluetooth a nivel de bindings)
+process.on('uncaughtException', (err) => {
+  const errorMsg = err.message || '';
+  if (errorMsg.includes('Initialization of USB device failed') || errorMsg.includes('ENODEV')) {
+    logger.error(`💥 Error crítico de inicialización USB detectado: ${errorMsg}. Ejecutando reinicio de Bluetooth...`);
+    try {
+      require('child_process').execSync('systemctl restart attach-bluetooth.service');
+      logger.info('✅ Comando de reinicio de Bluetooth (attach-bluetooth.service) ejecutado de emergencia.');
+    } catch (e) {
+      logger.error(`❌ Error al intentar reiniciar Bluetooth de emergencia: ${e.message}`);
+    }
+    // Salimos del proceso con error para que PM2 reinicie la aplicación de Node.js
+    process.exit(1);
+  } else {
+    logger.error('💥 Excepción no capturada:', err);
+    process.exit(1);
+  }
+});
 
 process.on('SIGINT', () => {
   logger.info('\n🛑 Finalizando aplicación...');
