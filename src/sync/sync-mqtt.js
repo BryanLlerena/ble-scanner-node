@@ -329,8 +329,19 @@ function initDatabase() {
         reject(err);
         return;
       }
-      logger.info('📊 Base de datos conectada para MQTT');
-      resolve(db);
+      // Configurar timeout y WAL mode para evitar SQLITE_BUSY
+      db.configure('busyTimeout', 10000);
+      db.exec(`
+        PRAGMA journal_mode = WAL;
+        PRAGMA busy_timeout = 10000;
+        PRAGMA synchronous = NORMAL;
+      `, (pragmaErr) => {
+        if (pragmaErr) {
+          logger.warn('⚠️ No se pudo configurar PRAGMA:', pragmaErr.message);
+        }
+        logger.info('📊 Base de datos conectada para MQTT (WAL mode activado)');
+        resolve(db);
+      });
     });
   });
 }
@@ -411,52 +422,6 @@ async function sendDataToMQTT() {
   } catch (error) {
     logger.error('❌ Error en sendDataToMQTT:', error.message);
   }
-}
-
-// Inicializar base de datos
-function initDatabase() {
-  return new Promise((resolve, reject) => {
-    db = new sqlite3.Database(DB_FILE, (err) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      logger.info('📊 Base de datos conectada para MQTT');
-      resolve(db);
-    });
-  });
-}
-
-// Inicializar cliente MQTT
-function initMQTT() {
-  return new Promise((resolve, reject) => {
-    logger.info(`📡 Conectando a MQTT broker: ${MQTT_BROKER}`);
-
-    mqttClient = mqtt.connect(MQTT_BROKER, mqttOptions);
-
-    mqttClient.on('connect', () => {
-      logger.info(`✅ Conectado a MQTT broker con ID: ${MQTT_CLIENT_ID}`);
-      logger.info(`📡 Topic de envío: ${MQTT_TOPIC}`);
-      resolve(mqttClient);
-    });
-
-    mqttClient.on('error', (err) => {
-      logger.error('❌ Error MQTT:', err.message);
-      reject(err);
-    });
-
-    mqttClient.on('disconnect', () => {
-      logger.warn('⚠️ Desconectado del broker MQTT');
-    });
-
-    mqttClient.on('reconnect', () => {
-      logger.info('🔄 Reconectando al broker MQTT...');
-    });
-
-    mqttClient.on('offline', () => {
-      logger.warn('📡 Cliente MQTT offline');
-    });
-  });
 }
 
 // Función principal

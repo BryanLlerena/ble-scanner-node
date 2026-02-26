@@ -56,6 +56,8 @@ app.get('/api/gps/history', (req, res) => {
 
 // Conectar a la base de datos
 const db = new sqlite3.Database(DB_FILE);
+db.configure('busyTimeout', 10000);
+db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 10000; PRAGMA synchronous = NORMAL;');
 
 // Ruta principal - servir el HTML
 app.get('/', (req, res) => {

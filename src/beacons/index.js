@@ -31,6 +31,9 @@ logger.info(`   BEACON_TIMEOUT: ${BEACON_TIMEOUT}s`);
 
 // Configuración de la base de datos
 const db = new sqlite3.Database(DB_FILE);
+db.configure('busyTimeout', 10000);
+db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 10000; PRAGMA synchronous = NORMAL;');
+
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS beacon_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -416,6 +419,18 @@ noble.on('stateChange', state => {
   } else {
     noble.stopScanning();
     logger.warn(`⏸️ Escaneo BLE detenido. Estado: ${state}`);
+
+    // Reinicio automático en caso de fallo crítico
+    if (state === 'poweredOff' || state === 'unknown' || state === 'unauthorized') {
+      logger.error(`🔄 Fallo crítico de Bluetooth detectado (estado: ${state}). Reiniciando servicio...`);
+      require('child_process').exec('systemctl restart attach-bluetooth.service', (error, stdout, stderr) => {
+        if (error) {
+          logger.error(`❌ Error al ejecutar el reinicio de Bluetooth: ${error.message}`);
+        } else {
+          logger.info('✅ Comando de reinicio de Bluetooth enviado con éxito.');
+        }
+      });
+    }
   }
 });
 
@@ -452,39 +467,48 @@ noble.on('discover', peripheral => {
 });
 
 // Función para procesar dispositivos acumulados (similar a tu lógica React Native)
-function processDetectedDevices() {
+async function processDetectedDevices() {
   if (detectedDevicesCache.size === 0) return;
 
   logger.debug(`📊 Procesando ${detectedDevicesCache.size} dispositivos acumulados...`);
 
-  for (const [deviceId, device] of detectedDevicesCache) {
-    if (device.isBeacon && device.mac.startsWith(TARGET_MAC_PREFIX)) {
-      getOpenEventByMac(device.mac, (err, currentEvent) => {
-        if (err) {
-          logger.error('❌ Error consultando evento:', err);
-          return;
-        }
+  // Crear una copia de los valores a iterar para poder vaciar el cache sincronamente en este ciclo principal
+  const devicesToProcess = Array.from(detectedDevicesCache.values());
+  detectedDevicesCache.clear();
 
-        if (currentEvent) {
-          const timeSinceLastUpdate = (Date.now() - new Date(currentEvent.f_final).getTime()) / 1000;
-          if (timeSinceLastUpdate < DEBOUNCE_TIME) {
-            // Dentro del tiempo de gracia - actualizar siempre
-            updateBeaconEvent(device, currentEvent.id);
-          } else {
-            closeBeaconEvent(currentEvent.id, device.mac);
-            if (!VALIDATE_DISTANCE || device.distanceInM <= SCAN_RANGE) {
+  for (const device of devicesToProcess) {
+    if (device.isBeacon && device.mac.startsWith(TARGET_MAC_PREFIX)) {
+      try {
+        await new Promise((resolve, reject) => {
+          getOpenEventByMac(device.mac, (err, currentEvent) => {
+            if (err) {
+              logger.error('❌ Error consultando evento:', err);
+              return resolve();
+            }
+
+            if (currentEvent) {
+              const timeSinceLastUpdate = (Date.now() - new Date(currentEvent.f_final).getTime()) / 1000;
+              if (timeSinceLastUpdate < DEBOUNCE_TIME) {
+                // Dentro del tiempo de gracia - actualizar siempre
+                updateBeaconEvent(device, currentEvent.id);
+              } else {
+                closeBeaconEvent(currentEvent.id, device.mac);
+                if (!VALIDATE_DISTANCE || device.distanceInM <= SCAN_RANGE) {
+                  saveBeaconEvent(device);
+                }
+              }
+            } else if (!VALIDATE_DISTANCE || device.distanceInM <= SCAN_RANGE) {
               saveBeaconEvent(device);
             }
-          }
-        } else if (!VALIDATE_DISTANCE || device.distanceInM <= SCAN_RANGE) {
-          saveBeaconEvent(device);
-        }
-      });
+            resolve();
+          });
+        });
+      } catch (err) {
+        logger.error('❌ Error general durante el procesamiento del beacon:', err);
+      }
     }
   }
 
-  // Limpiar cache después de procesar
-  detectedDevicesCache.clear();
   logger.debug('✅ Dispositivos procesados y cache limpiado');
 }
 

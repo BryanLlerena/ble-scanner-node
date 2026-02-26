@@ -17,6 +17,8 @@ logger.info(`   INITIAL_SYNC_DELAY: ${INITIAL_SYNC_DELAY}ms`);
 
 // Conectar a la base de datos
 const db = new sqlite3.Database(DB_FILE);
+db.configure('busyTimeout', 10000);
+db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 10000; PRAGMA synchronous = NORMAL;');
 
 // Función para sincronizar eventos
 async function runSync() {
