@@ -136,6 +136,29 @@ mkdir -p /mnt/storage/.npm
 mkdir -p /mnt/storage/.pm2
 ```
 
+### Step 2.1: Instalar script de GPS runner
+
+Este script es necesario para simular la señal GPS y debe estar disponible en `/usr/bin/gps_runner.sh`.
+
+```bash
+umount /etc/ -l
+mount -o remount rw /
+
+# Crear el script gps_runner.sh
+cat <<'EOF' > /usr/bin/gps_runner.sh
+#!/bin/sh
+(
+    echo "90"; sleep 1
+    echo "92"; sleep 1
+    while true; do echo "95"; sleep 1; done
+) | script -q -c "/usr/bin/qlril-api-test" /dev/null
+EOF
+
+chmod +x /usr/bin/gps_runner.sh
+```
+
+> Este paso es necesario antes de iniciar cualquier servicio que dependa de la lectura de GPS.
+
 ## Step 3: Descargar e Instalar Node.js (v22.21.1)
 
 ```bash
