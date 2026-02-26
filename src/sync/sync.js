@@ -460,18 +460,12 @@ function markGPSAsSent(db, gpsIds) {
 
 // Enviar datos GPS al API (por lotes de 500)
 async function syncGPSData(db) {
-  const BATCH_SIZE = 500; // Enviar máximo 500 por vez
+  const BATCH_SIZE = 100; // Enviar máximo 500 por vez
   let totalSent = 0;
-  let wifiInfo = { wap: "", wap_mac: "" };
-
+  // No es necesario obtener info de WiFi
   try {
-    await getWifiInfo().then(info => {
-      wifiInfo.wap = info.ssid;
-      wifiInfo.wap_mac = info.bssid;
-    }).catch(console.error);
-
-    // Configurar endpoint GPS (Corrige 404 error)
-    const GPS_ENDPOINT = `${API_BASE_URL}/beacon-track/gps`;
+    // Configurar endpoint GPS
+    const GPS_ENDPOINT = `${API_BASE_URL}/gps-data`;
 
     // Enviar en lotes hasta que no haya más pendientes
     while (true) {
@@ -486,15 +480,13 @@ async function syncGPSData(db) {
 
       logger.info(`📍 Enviando lote de ${pendingGPS.length} registros GPS...`);
 
-      // Convertir a formato API
+      // Convertir a formato API (solo datos GPS)
       const payload = pendingGPS.map(gps => ({
         unit: gps.unit || UNIT,
         latitude: gps.latitude,
         longitude: gps.longitude,
         fix: gps.fix,
-        timestamp: gps.timestamp,
-        wap: wifiInfo.wap || "",
-        wap_mac: wifiInfo.wap_mac || ""
+        timestamp: gps.timestamp
       }));
 
       // Enviar a la API
@@ -510,13 +502,13 @@ async function syncGPSData(db) {
 
         totalSent += pendingGPS.length;
         logger.info(`✅ Lote enviado: ${pendingGPS.length} GPS (Total: ${totalSent})`);
-
+        
         // Si envió menos del lote completo, ya no hay más pendientes
         if (pendingGPS.length < BATCH_SIZE) {
           logger.info(`✅ Sincronización GPS completada: ${totalSent} registros enviados`);
           return { success: true, sent: totalSent };
         }
-
+        
         // Continuar con siguiente lote
         continue;
       } else {

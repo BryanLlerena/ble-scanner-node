@@ -65,13 +65,29 @@ app.get('/api/gps/latest', (req, res) => {
   });
 });
 
-// GET /api/gps/history - Historial de GPS (últimos 100)
-app.get('/api/gps/history', (req, res) => {
-  dbGps.all('SELECT * FROM gps_data ORDER BY timestamp DESC LIMIT 100', (err, rows) => {
+// GET /api/gps/history - Historial de GPS (últimos 100) con MAC beacon cercano
+app.get('/api/gps/history', async (req, res) => {
+  dbGps.all('SELECT * FROM gps_data ORDER BY timestamp DESC LIMIT 100', async (err, rows) => {
     if (err) {
       return res.status(500).json({ error: 'Error consultando la base de datos GPS' });
     }
-    res.json(rows);
+    // Para cada registro GPS, buscar beacon cercano
+    const results = await Promise.all(rows.map(async (row) => {
+      // Buscar beacon en ±5 segundos
+      return new Promise((resolve) => {
+        dbBeacons.get(
+          `SELECT beaconMac FROM beacon_events WHERE ABS(strftime('%s', timestamp) - strftime('%s', ?)) <= 5 ORDER BY ABS(strftime('%s', timestamp) - strftime('%s', ?)) LIMIT 1`,
+          [row.timestamp, row.timestamp],
+          (err2, beaconRow) => {
+            resolve({
+              ...row,
+              beaconMac: beaconRow ? beaconRow.beaconMac : ''
+            });
+          }
+        );
+      });
+    }));
+    res.json(results);
   });
 });
 
