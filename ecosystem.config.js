@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'ble-scanner',
-      script: 'index.js',
+      script: 'src/beacons/index.js',
       instances: 1,
       autorestart: true,
       watch: false,
@@ -17,7 +17,7 @@ module.exports = {
     },
     {
       name: 'sync-processor',
-      script: 'sync-processor.js',
+      script: 'src/sync/sync-processor.js',
       instances: 1,
       autorestart: true,
       watch: false,
@@ -32,7 +32,7 @@ module.exports = {
     },
     {
       name: 'mqtt-service',
-      script: 'sync-mqtt.js',
+      script: 'src/sync/sync-mqtt.js',
       instances: 1,
       autorestart: true,
       watch: false,
@@ -47,7 +47,7 @@ module.exports = {
     },
     {
       name: 'wifi-status',
-      script: 'wifi-status.js',
+      script: 'src/wifi/wifi-status.js',
       instances: 1,
       autorestart: true,
       watch: false,

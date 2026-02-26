@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 // Sincronización ahora manejada por sync-processor.js
-const logger = require('./logger');
+const logger = require('../utils/logger');
 
 // Configuración desde variables de entorno
 const SCAN_RANGE = parseFloat(process.env.SCAN_RANGE) || 80;
@@ -14,12 +14,14 @@ const DEBOUNCE_TIME = parseInt(process.env.DEBOUNCE_TIME) || 300;
 const TARGET_MAC_PREFIX = process.env.TARGET_MAC_PREFIX || "bc:57:29";
 const UNIT = process.env.UNIT || "TEST_UNIT";
 const DB_FILE = process.env.DB_FILE || "beacons.db";
+const VALIDATE_DISTANCE = process.env.VALIDATE_DISTANCE !== 'false'; // Defaults to true
 // Variables de sincronización movidas a sync-processor.js
 const DEBUG_DEVICES = process.env.DEBUG_DEVICES === 'true';
-const BEACON_TIMEOUT = parseInt(process.env.BEACON_TIMEOUT) || 3000; // 5 minutos por defecto
+const BEACON_TIMEOUT = parseInt(process.env.BEACON_TIMEOUT) || 300; // 5 minutos por defecto
 
 logger.info('🔧 Configuración cargada:');
 logger.info(`   SCAN_RANGE: ${SCAN_RANGE}m`);
+logger.info(`   VALIDATE_DISTANCE: ${VALIDATE_DISTANCE}`);
 logger.info(`   DEBOUNCE_TIME: ${DEBOUNCE_TIME}s`);
 logger.info(`   TARGET_MAC_PREFIX: ${TARGET_MAC_PREFIX}`);
 logger.info(`   UNIT: ${UNIT}`);
@@ -29,6 +31,9 @@ logger.info(`   BEACON_TIMEOUT: ${BEACON_TIMEOUT}s`);
 
 // Configuración de la base de datos
 const db = new sqlite3.Database(DB_FILE);
+db.configure('busyTimeout', 10000);
+db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 10000; PRAGMA synchronous = NORMAL;');
+
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS beacon_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,10 +62,10 @@ db.serialize(() => {
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_beacon_mac ON beacon_events(beaconMac)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_event_state ON beacon_events(eventState)`);
-  db.run(`ALTER TABLE beacon_events ADD COLUMN syncStatus TEXT DEFAULT 'pending'`, () => {});
-  db.run(`ALTER TABLE beacon_events ADD COLUMN syncTimestamp DATETIME`, () => {});
-  db.run(`ALTER TABLE beacon_events ADD COLUMN uuid TEXT`, () => {});
-  db.run(`ALTER TABLE beacon_events ADD COLUMN created TEXT`, () => {});
+  db.run(`ALTER TABLE beacon_events ADD COLUMN syncStatus TEXT DEFAULT 'pending'`, () => { });
+  db.run(`ALTER TABLE beacon_events ADD COLUMN syncTimestamp DATETIME`, () => { });
+  db.run(`ALTER TABLE beacon_events ADD COLUMN uuid TEXT`, () => { });
+  db.run(`ALTER TABLE beacon_events ADD COLUMN created TEXT`, () => { });
 
   // Tabla GPS separada
   db.run(`CREATE TABLE IF NOT EXISTS gps_data (
@@ -74,7 +79,7 @@ db.serialize(() => {
     syncStatus TEXT DEFAULT 'pending',
     syncTimestamp TEXT
   )`);
-  
+
   db.run(`CREATE INDEX IF NOT EXISTS idx_gps_syncStatus ON gps_data(syncStatus)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_gps_created ON gps_data(created)`);
 });
@@ -122,8 +127,10 @@ function saveBeaconEvent(deviceData) {
     distance: deviceData.distanceInM
   };
 
-  const rssi = deviceData.distanceInM <= SCAN_RANGE ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
-  const rssi_discard = deviceData.distanceInM > SCAN_RANGE ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
+  const withinRange = !VALIDATE_DISTANCE || deviceData.distanceInM <= SCAN_RANGE;
+
+  const rssi = withinRange ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
+  const rssi_discard = !withinRange ? JSON.stringify([rssiEntry]) : JSON.stringify([]);
 
   db.run(
     `INSERT INTO beacon_events (deviceId, beaconMac, name, rssi, rssi_discard, timestamp, type, uuid, major, minor, txPower, namespace, instance, distance, distanceInM, eventState, f_inicio, f_final, unit, manufacturerData, serviceData, syncStatus, created) 
@@ -155,8 +162,8 @@ function saveBeaconEvent(deviceData) {
       if (err) {
         logger.error('❌ Error guardando evento:', err);
       } else {
-        const rssiCount = deviceData.distanceInM <= SCAN_RANGE ? 1 : 0;
-        const rssiDiscardCount = deviceData.distanceInM > SCAN_RANGE ? 1 : 0;
+        const rssiCount = withinRange ? 1 : 0;
+        const rssiDiscardCount = !withinRange ? 1 : 0;
         logger.debug(`✅ Evento guardado para beacon ${deviceData.mac} | RSSI entries: ${rssiCount} | RSSI_discard entries: ${rssiDiscardCount}`);
       }
     }
@@ -198,8 +205,10 @@ function updateBeaconEvent(deviceData, eventId) {
         distance: deviceData.distanceInM
       };
 
+      const withinRange = !VALIDATE_DISTANCE || deviceData.distanceInM <= SCAN_RANGE;
+
       // Agregar nueva entrada al array correspondiente según distancia
-      if (deviceData.distanceInM <= SCAN_RANGE) {
+      if (withinRange) {
         currentRssiArray.push(newRssiEntry);
       } else {
         currentRssiDiscardArray.push(newRssiEntry);
@@ -232,7 +241,7 @@ function updateBeaconEvent(deviceData, eventId) {
           if (err) {
             logger.error('❌ Error actualizando evento:', err);
           } else {
-            const finalUpdateMsg = deviceData.distanceInM <= SCAN_RANGE ? " | f_final actualizado" : " | f_final sin cambios (fuera de rango)";
+            const finalUpdateMsg = withinRange ? " | f_final actualizado" : " | f_final sin cambios (fuera de rango)";
             logger.debug(`✅ Evento ${eventId} actualizado | RSSI entries: ${currentRssiArray.length} | RSSI_discard entries: ${currentRssiDiscardArray.length}${finalUpdateMsg}`);
           }
         }
@@ -410,6 +419,18 @@ noble.on('stateChange', state => {
   } else {
     noble.stopScanning();
     logger.warn(`⏸️ Escaneo BLE detenido. Estado: ${state}`);
+
+    // Reinicio automático en caso de fallo crítico
+    if (state === 'poweredOff' || state === 'unknown' || state === 'unauthorized') {
+      logger.error(`🔄 Fallo crítico de Bluetooth detectado (estado: ${state}). Reiniciando servicio...`);
+      require('child_process').exec('systemctl restart attach-bluetooth.service', (error, stdout, stderr) => {
+        if (error) {
+          logger.error(`❌ Error al ejecutar el reinicio de Bluetooth: ${error.message}`);
+        } else {
+          logger.info('✅ Comando de reinicio de Bluetooth enviado con éxito.');
+        }
+      });
+    }
   }
 });
 
@@ -446,39 +467,48 @@ noble.on('discover', peripheral => {
 });
 
 // Función para procesar dispositivos acumulados (similar a tu lógica React Native)
-function processDetectedDevices() {
+async function processDetectedDevices() {
   if (detectedDevicesCache.size === 0) return;
 
   logger.debug(`📊 Procesando ${detectedDevicesCache.size} dispositivos acumulados...`);
 
-  for (const [deviceId, device] of detectedDevicesCache) {
-    if (device.isBeacon && device.mac.startsWith(TARGET_MAC_PREFIX)) {
-      getOpenEventByMac(device.mac, (err, currentEvent) => {
-        if (err) {
-          logger.error('❌ Error consultando evento:', err);
-          return;
-        }
+  // Crear una copia de los valores a iterar para poder vaciar el cache sincronamente en este ciclo principal
+  const devicesToProcess = Array.from(detectedDevicesCache.values());
+  detectedDevicesCache.clear();
 
-        if (currentEvent) {
-          const timeSinceLastUpdate = (Date.now() - new Date(currentEvent.f_final).getTime()) / 1000;
-          if (timeSinceLastUpdate < DEBOUNCE_TIME) {
-            // Dentro del tiempo de gracia - actualizar siempre
-            updateBeaconEvent(device, currentEvent.id);
-          } else {
-            closeBeaconEvent(currentEvent.id, device.mac);
-            if (device.distanceInM <= SCAN_RANGE) {
+  for (const device of devicesToProcess) {
+    if (device.isBeacon && device.mac.startsWith(TARGET_MAC_PREFIX)) {
+      try {
+        await new Promise((resolve, reject) => {
+          getOpenEventByMac(device.mac, (err, currentEvent) => {
+            if (err) {
+              logger.error('❌ Error consultando evento:', err);
+              return resolve();
+            }
+
+            if (currentEvent) {
+              const timeSinceLastUpdate = (Date.now() - new Date(currentEvent.f_final).getTime()) / 1000;
+              if (timeSinceLastUpdate < DEBOUNCE_TIME) {
+                // Dentro del tiempo de gracia - actualizar siempre
+                updateBeaconEvent(device, currentEvent.id);
+              } else {
+                closeBeaconEvent(currentEvent.id, device.mac);
+                if (!VALIDATE_DISTANCE || device.distanceInM <= SCAN_RANGE) {
+                  saveBeaconEvent(device);
+                }
+              }
+            } else if (!VALIDATE_DISTANCE || device.distanceInM <= SCAN_RANGE) {
               saveBeaconEvent(device);
             }
-          }
-        } else if (device.distanceInM <= SCAN_RANGE) {
-          saveBeaconEvent(device);
-        }
-      });
+            resolve();
+          });
+        });
+      } catch (err) {
+        logger.error('❌ Error general durante el procesamiento del beacon:', err);
+      }
     }
   }
 
-  // Limpiar cache después de procesar
-  detectedDevicesCache.clear();
   logger.debug('✅ Dispositivos procesados y cache limpiado');
 }
 
@@ -503,9 +533,9 @@ process.on('SIGINT', () => {
 });
 
 // --- LIVE DUMP LOOP ---
-const LIVE_DUMP_FILE = path.join(__dirname, 'public', 'live_beacons.json');
-if (!fs.existsSync(path.join(__dirname, 'public'))) {
-  try { fs.mkdirSync(path.join(__dirname, 'public')); } catch (e) { }
+const LIVE_DUMP_FILE = path.join(__dirname, '../../public', 'live_beacons.json');
+if (!fs.existsSync(path.join(__dirname, '../../public'))) {
+  try { fs.mkdirSync(path.join(__dirname, '../../public')); } catch (e) { }
 }
 
 setInterval(() => {

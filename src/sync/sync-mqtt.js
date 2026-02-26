@@ -5,7 +5,7 @@ async function sendGPSDataToMQTT() {
       logger.debug('📡 Cliente MQTT no conectado, saltando envío GPS');
       return;
     }
-    
+
     if (!lastGPSData) {
       logger.debug('📍 No hay datos GPS para enviar');
       return;
@@ -47,8 +47,8 @@ async function sendGPSDataToMQTT() {
 require('dotenv').config();
 const mqtt = require('mqtt');
 const sqlite3 = require('sqlite3').verbose();
-const logger = require('./logger');
-const wifiUtils = require('./wifi-utils');
+const logger = require('../utils/logger');
+const wifiUtils = require('../wifi/wifi-utils');
 const { v4: uuidv4 } = require('uuid');
 const { spawn } = require('child_process');
 
@@ -60,7 +60,7 @@ const MQTT_BROKER = process.env.MQTT_BROKER || 'mqtt://localhost:1883';
 const MQTT_CLIENT_ID = `${uuidv4()}_${UNIT}`;
 const MQTT_USERNAME = process.env.MQTT_USERNAME || null;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD || null;
-const MQTT_INTERVAL = parseInt(process.env.MQTT_INTERVAL) || 60000;
+const MQTT_INTERVAL = (parseInt(process.env.MQTT_INTERVAL) || 60) * 1000;
 const MQTT_TOPIC = `${COMPANY}/unit/${UNIT.toLowerCase()}/tracking`;
 const MQTT_GPS_TOPIC = `${COMPANY}/unit/${UNIT.toLowerCase()}/gps`;
 
@@ -93,7 +93,7 @@ async function getWifiInfo() {
 // Función para guardar GPS en base de datos local
 function saveGPSToDatabase(gpsData) {
   const timestamp = new Date().toISOString();
-  
+
   db.run(`
     INSERT INTO gps_data (unit, latitude, longitude, fix, timestamp, created, syncStatus)
     VALUES (?, ?, ?, ?, ?, ?, 'pending')
@@ -144,10 +144,10 @@ function readGPSData(callback) {
               fix: parts[6],
               timestamp: Date.now()
             };
-            
+
             // Guardar en base de datos local
             saveGPSToDatabase(lastGPSData);
-            
+
             gpsDataReceived = true;
             clearTimeout(timeout);
             callback(lastGPSData);
@@ -329,8 +329,19 @@ function initDatabase() {
         reject(err);
         return;
       }
-      logger.info('📊 Base de datos conectada para MQTT');
-      resolve(db);
+      // Configurar timeout y WAL mode para evitar SQLITE_BUSY
+      db.configure('busyTimeout', 10000);
+      db.exec(`
+        PRAGMA journal_mode = WAL;
+        PRAGMA busy_timeout = 10000;
+        PRAGMA synchronous = NORMAL;
+      `, (pragmaErr) => {
+        if (pragmaErr) {
+          logger.warn('⚠️ No se pudo configurar PRAGMA:', pragmaErr.message);
+        }
+        logger.info('📊 Base de datos conectada para MQTT (WAL mode activado)');
+        resolve(db);
+      });
     });
   });
 }
@@ -367,52 +378,6 @@ function initMQTT() {
   });
 }
 
-
-// Inicializar base de datos
-function initDatabase() {
-  return new Promise((resolve, reject) => {
-    db = new sqlite3.Database(DB_FILE, (err) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      logger.info('📊 Base de datos conectada para MQTT');
-      resolve(db);
-    });
-  });
-}
-
-// Inicializar cliente MQTT
-function initMQTT() {
-  return new Promise((resolve, reject) => {
-    logger.info(`📡 Conectando a MQTT broker: ${MQTT_BROKER}`);
-
-    mqttClient = mqtt.connect(MQTT_BROKER, mqttOptions);
-
-    mqttClient.on('connect', () => {
-      logger.info(`✅ Conectado a MQTT broker con ID: ${MQTT_CLIENT_ID}`);
-      logger.info(`📡 Topic de envío: ${MQTT_TOPIC}`);
-      resolve(mqttClient);
-    });
-
-    mqttClient.on('error', (err) => {
-      logger.error('❌ Error MQTT:', err.message);
-      reject(err);
-    });
-
-    mqttClient.on('disconnect', () => {
-      logger.warn('⚠️ Desconectado del broker MQTT');
-    });
-
-    mqttClient.on('reconnect', () => {
-      logger.info('🔄 Reconectando al broker MQTT...');
-    });
-
-    mqttClient.on('offline', () => {
-      logger.warn('📡 Cliente MQTT offline');
-    });
-  });
-}
 
 // Función principal
 async function startMQTTService() {
@@ -437,7 +402,7 @@ async function startMQTTService() {
       readGPSData(() => {
         sendGPSDataToMQTT();
       });
-      
+
       // Enviar beacons a topic tracking
       sendBeaconDataToMQTT();
     }, 1000);
