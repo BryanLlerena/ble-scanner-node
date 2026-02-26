@@ -114,8 +114,8 @@ sync
 # Iniciar servicio ahora
 systemctl start tailscaled
 
-# Verificar estado (Debe decir 'Active: active (running)')
-systemctl status tailscaled
+<!-- # Verificar estado (Debe decir 'Active: active (running)')
+systemctl status tailscaled -->
 
 --------------------------------------------------------------------------------
 PASO 6: CONEXIÓN Y ACCESO FINAL
