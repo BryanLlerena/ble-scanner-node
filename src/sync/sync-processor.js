@@ -32,13 +32,13 @@ async function runSync() {
 
 // Función para limpiar datos antiguos enviados (older than 7 days)
 function cleanupOldSentData() {
-  const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+  const cutoff = Date.now() - (CLEANUP_DAYS * 24 * 60 * 60 * 1000);
 
   // Limpiar beacons antiguos
   db.run(`
     DELETE FROM beacon_events 
     WHERE syncStatus = 'sent' AND created < ?
-  `, [sevenDaysAgo], function (err) {
+  `, [cutoff], function (err) {
     if (err) {
       logger.error('❌ Error limpiando beacons antiguos:', err);
     } else if (this.changes > 0) {
@@ -50,7 +50,7 @@ function cleanupOldSentData() {
   db.run(`
     DELETE FROM gps_data 
     WHERE syncStatus = 'sent' AND created < ?
-  `, [sevenDaysAgo], function (err) {
+  `, [cutoff], function (err) {
     if (err) {
       logger.error('❌ Error limpiando GPS antiguos:', err);
     } else if (this.changes > 0) {
@@ -58,6 +58,9 @@ function cleanupOldSentData() {
     }
   });
 }
+
+// Leer días de retención desde .env o usar 7 por defecto
+const CLEANUP_DAYS = parseInt(process.env.CLEANUP_DAYS, 10) || 7;
 
 // Configurar sincronización periódica
 logger.info(`⏰ Configurando sincronización cada ${SYNC_INTERVAL}ms`);
@@ -68,8 +71,8 @@ logger.info(`⏳ Primera sincronización en ${INITIAL_SYNC_DELAY}ms`);
 setTimeout(runSync, INITIAL_SYNC_DELAY);
 
 // Configurar limpieza semanal de datos antiguos enviados
-const CLEANUP_INTERVAL = 7 * 24 * 60 * 60 * 1000; // 7 días en milisegundos
-logger.info(`🧹 Configurando limpieza semanal de datos antiguos`);
+const CLEANUP_INTERVAL = CLEANUP_DAYS * 24 * 60 * 60 * 1000; // días en milisegundos
+logger.info(`🧹 Configurando limpieza cada ${CLEANUP_DAYS} días de datos antiguos`);
 setInterval(cleanupOldSentData, CLEANUP_INTERVAL);
 
 // Ejecutar primera limpieza después de 1 hora
