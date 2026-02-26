@@ -446,12 +446,11 @@
                             <th>Fecha</th>
                             <th>Latitud</th>
                             <th>Longitud</th>
-                            <th>MAC Beacon</th>
                         </tr>
                     </thead>
                     <tbody id="gpsHistoryTableBody">
                         <tr>
-                            <td colspan="4">Cargando...</td>
+                            <td colspan="3">Cargando...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -507,7 +506,7 @@
                         const tbody = document.getElementById('gpsHistoryTableBody');
                         tbody.innerHTML = '';
                         if (data.length === 0) {
-                            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">No hay registros</td></tr>';
+                            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">No hay registros</td></tr>';
                             return;
                         }
                         data.forEach(row => {
@@ -517,12 +516,11 @@
                                 <td>${date}</td>
                                 <td>${row.latitude}</td>
                                 <td>${row.longitude}</td>
-                                <td>${row.beaconMac || '-'}</td>
                             `;
                             tbody.appendChild(tr);
                         });
                     } catch (e) {
-                        document.getElementById('gpsHistoryTableBody').innerHTML = '<tr><td colspan="4">Error cargando historial</td></tr>';
+                        document.getElementById('gpsHistoryTableBody').innerHTML = '<tr><td colspan="3">Error cargando historial</td></tr>';
                     }
                 }
         // --- NAVIGATION LOGIC ---

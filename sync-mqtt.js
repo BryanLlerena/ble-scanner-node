@@ -367,51 +367,6 @@ function initMQTT() {
   });
 }
 
-// Función principal para enviar beacon y/o GPS al mismo topic
-async function sendDataToMQTT() {
-  try {
-    if (!mqttClient || !mqttClient.connected) {
-      logger.warn('📡 Cliente MQTT no conectado, saltando envío');
-      return;
-    }
-
-    // Obtener información WiFi
-    let wifiInfo = { wap: "", wap_mac: "" };
-    try {
-      const info = await getWifiInfo();
-      wifiInfo.wap = info.ssid;
-      wifiInfo.wap_mac = info.bssid;
-    } catch (wifiErr) {
-      logger.warn('⚠️ No se pudo obtener información WiFi:', wifiErr.message);
-    }
-
-    const lastEvents = await getLastFiveEvents(db);
-
-    // Unificar el envío: beacon, gps o ambos
-    if (!lastEvents.length && !lastGPSData) {
-      logger.debug('📡 No hay datos beacon ni GPS para enviar por MQTT');
-      return;
-    }
-
-    const payload = {
-      unit: UNIT,
-      timestamp: new Date().toISOString(),
-      beacon: lastEvents.length ? lastEvents.map(event => convertEventToMqttFormat(event, wifiInfo)) : undefined,
-      gps: lastGPSData || undefined
-    };
-
-    const message = JSON.stringify(payload, null, 2);
-    mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
-      if (err) {
-        logger.error('❌ Error enviando datos unificados MQTT:', err.message);
-      } else {
-        logger.info('📡 Enviado datos unificados por MQTT');
-      }
-    });
-  } catch (error) {
-    logger.error('❌ Error en sendDataToMQTT:', error.message);
-  }
-}
 
 // Inicializar base de datos
 function initDatabase() {
