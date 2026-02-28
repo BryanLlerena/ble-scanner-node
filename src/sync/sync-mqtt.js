@@ -14,9 +14,10 @@ async function sendGPSDataToMQTT() {
       return;
     }
 
-    // Evitar enviar el mismo dato GPS repetitivo en menos de 1 segundo (anti-rebote)
+    // Evitar enviar el mismo dato GPS repetitivo en menos del tiempo configurado en .env
     const now = Date.now();
-    if (now - lastGPSPublishTime < 1000) {
+    // Se resta un pequeño margen (100ms) para tolerar la precisión del setInterval
+    if (now - lastGPSPublishTime < (MQTT_INTERVAL - 100)) {
       return;
     }
     lastGPSPublishTime = now;
@@ -152,8 +153,15 @@ function readGPSData(callback) {
   }, 5000);
 
   gpsProcess.stdout.on('data', (data) => {
+    if (gpsDataReceived) return; // Si ya cortamos, ignorar todo lo que llegue rezagado en el stream de Node
+
     const lines = data.toString().split('\n');
     for (const line of lines) {
+      // Si ya recibimos un dato en esta ráfaga, ignorar el resto
+      if (gpsDataReceived) {
+        break;
+      }
+
       // Buscar línea NMEA GGA
       if (line.includes('GGA')) {
         const parts = line.split(',');
