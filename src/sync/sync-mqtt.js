@@ -1,3 +1,6 @@
+let lastGPSData = null;
+let lastGPSPublishTime = 0; // Control de tiempo para envíos GPS
+
 // Función para enviar GPS a topic separado
 async function sendGPSDataToMQTT() {
   try {
@@ -11,12 +14,17 @@ async function sendGPSDataToMQTT() {
       return;
     }
 
-    // Obtener información WiFi
-    let wifiInfo = { wap: "", wap_mac: "" };
+    // Evitar enviar el mismo dato GPS repetitivo en menos de 1 segundo (anti-rebote)
+    const now = Date.now();
+    if (now - lastGPSPublishTime < 1000) {
+      return;
+    }
+    lastGPSPublishTime = now;
+
+    // Obtener información WiFi en caché
+    let wifiInfo = { ssid: "", bssid: "" };
     try {
-      const info = await getWifiInfo();
-      wifiInfo.wap = info.ssid;
-      wifiInfo.wap_mac = info.bssid;
+      wifiInfo = await getWifiInfo();
     } catch (wifiErr) {
       logger.warn('⚠️ No se pudo obtener información WiFi:', wifiErr.message);
     }
@@ -27,8 +35,8 @@ async function sendGPSDataToMQTT() {
       latitude: lastGPSData.latitude,
       longitude: lastGPSData.longitude,
       fix: lastGPSData.fix,
-      wap: wifiInfo.wap || "",
-      wap_mac: wifiInfo.wap_mac || ""
+      wap: wifiInfo.ssid || "",
+      wap_mac: wifiInfo.bssid || ""
     };
 
     const message = JSON.stringify(payload, null, 2);
@@ -71,8 +79,8 @@ let mqttClient = null;
 let db = null;
 
 // Variables para almacenar datos recientes
+// (lastGPSData movido arriba junto a la función de GPS)
 let lastBeaconEvents = [];
-let lastGPSData = null;
 
 // Configuración del cliente MQTT
 const mqttOptions = {
