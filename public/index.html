@@ -515,32 +515,37 @@
                 gpsMarker.setLatLng([lat, lon]);
                 if (!gpsMapUserMoved) {
                     gpsMap.setView([lat, lon], 17);
-                    const speeedText = data.speed !== undefined ? ` | Vel: ${parseFloat(data.speed).toFixed(1)} km/h` : '';
-                    document.getElementById('gpsInfo').textContent = `Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}${speeedText} | ${data.timestamp ? new Date(data.timestamp).toLocaleString() : ''}`;
-
-                    // Actualizar recuadro principal de velocidad si existe
-                    const currentSpeedEl = document.getElementById('current-speed');
-                    if (currentSpeedEl) {
-                        currentSpeedEl.textContent = data.speed !== undefined ? `${parseFloat(data.speed).toFixed(1)} km/h` : '- km/h';
-                    }
-
-                    // Actualizar tabla Última Posición GPS
-                    const tbodyLatest = document.getElementById('gpsLatestTableBody');
-                    if (tbodyLatest) {
-                        const dateStr = data.timestamp ? new Date(data.timestamp).toLocaleString() : '-';
-                        const speedVal = data.speed !== undefined ? parseFloat(data.speed).toFixed(2) : '-';
-                        tbodyLatest.innerHTML = `
-                            <tr>
-                                <td>${dateStr}</td>
-                                <td>${lat.toFixed(6)}</td>
-                                <td>${lon.toFixed(6)}</td>
-                                <td><b>${speedVal}</b></td>
-                            </tr>
-                        `;
-                    }
                 }
+
+                // Actualizar info textual
+                const speeedText = data.speed !== undefined ? ` | Vel: ${parseFloat(data.speed).toFixed(1)} km/h` : '';
+                document.getElementById('gpsInfo').textContent = `Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}${speeedText} | ${data.timestamp ? new Date(data.timestamp).toLocaleString() : ''}`;
+
+                // Actualizar recuadro principal de velocidad si existe
+                const currentSpeedEl = document.getElementById('current-speed');
+                if (currentSpeedEl) {
+                    currentSpeedEl.textContent = data.speed !== undefined ? `${parseFloat(data.speed).toFixed(1)} km/h` : '- km/h';
+                }
+
+                // Actualizar tabla Última Posición GPS
+                const tbodyLatest = document.getElementById('gpsLatestTableBody');
+                if (tbodyLatest) {
+                    const dateStr = data.timestamp ? new Date(data.timestamp).toLocaleString() : '-';
+                    const speedVal = data.speed !== undefined ? parseFloat(data.speed).toFixed(2) : '-';
+                    tbodyLatest.innerHTML = `
+                        <tr>
+                            <td>${dateStr}</td>
+                            <td>${lat.toFixed(6)}</td>
+                            <td>${lon.toFixed(6)}</td>
+                            <td><b>${speedVal}</b></td>
+                        </tr>
+                    `;
+                }
+
             } catch (e) {
                 document.getElementById('gpsInfo').textContent = 'No hay datos GPS recientes.';
+                const currentSpeedEl = document.getElementById('current-speed');
+                if (currentSpeedEl) currentSpeedEl.textContent = '- km/h';
                 const tbodyLatest = document.getElementById('gpsLatestTableBody');
                 if (tbodyLatest) tbodyLatest.innerHTML = `<tr><td colspan="4">No hay datos GPS</td></tr>`;
             }
