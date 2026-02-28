@@ -512,9 +512,14 @@
                 const lon = parseFloat(data.longitude);
                 lastGpsLat = lat;
                 lastGpsLon = lon;
-                gpsMarker.setLatLng([lat, lon]);
-                if (!gpsMapUserMoved) {
-                    gpsMap.setView([lat, lon], 17);
+
+                try {
+                    gpsMarker.setLatLng([lat, lon]);
+                    if (!gpsMapUserMoved) {
+                        gpsMap.setView([lat, lon], 17);
+                    }
+                } catch (mapErr) {
+                    console.warn("Map not visible or ready", mapErr);
                 }
 
                 // Actualizar info textual
