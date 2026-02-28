@@ -589,6 +589,8 @@ setInterval(() => {
     } else {
       liveList.push({
         beaconMac: device.mac,
+        mac: device.mac,
+        name: device.name || 'Unknown',
         rssi: device.rssi,
         distance: device.distanceInM.toFixed(2),
         eventState: 'active', // Simulado para compatibilidad

@@ -317,7 +317,7 @@ async function publishBeacons() {
       unitId: UNIT,
       count: devices.length,
       devices: devices.map((d) => ({
-        address: d.mac || d.address,
+        address: d.mac || d.beaconMac || d.address,
         name: d.name || 'Unknown',
         rssi: d.rssi ?? null
       })),
