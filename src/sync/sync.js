@@ -12,7 +12,8 @@ const UNIT = process.env.UNIT || "TEST_UNIT";
 const API_BASE_URL = process.env.API_BASE_URL || "http://172.236.110.18:3001/api/v1";
 const API_ENDPOINTS = {
   BEACON_TRACK_MANY: `${API_BASE_URL}/beacon-track/many`,
-  BEACON_TRACK_UPDATE: `${API_BASE_URL}/beacon-track`
+  BEACON_TRACK_UPDATE: `${API_BASE_URL}/beacon-track`,
+  SESSIONS_BATCH: `${API_BASE_URL}/sessions/batch`
 };
 
 // Configuración de verificación de internet
@@ -167,6 +168,24 @@ function getPendingEvents(db, limit = 500) {
     db.all(`
       SELECT * FROM beacon_events 
       WHERE syncStatus = 'pending'
+      ORDER BY id ASC
+      LIMIT ?
+    `, [limit], (err, rows) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(rows);
+    });
+  });
+}
+
+// Obtener sesiones cerradas pendientes de enviar a /sessions/batch
+function getPendingClosedSessions(db, limit = 500) {
+  return new Promise((resolve, reject) => {
+    db.all(`
+      SELECT * FROM beacon_events 
+      WHERE eventState = 'closed' AND (syncStatus = 'pending' OR syncStatus = 'updated')
       ORDER BY id ASC
       LIMIT ?
     `, [limit], (err, rows) => {
@@ -375,6 +394,88 @@ async function updateExistingBeaconEvents(db) {
   }
 }
 
+// Enviar sesiones cerradas al nuevo endpoint (POST /sessions/batch)
+async function sendClosedSessionsBatch(db) {
+  const BATCH_SIZE = 500;
+  let totalSent = 0;
+  let wifiInfo = { wap: "", wap_mac: "" };
+
+  try {
+    await getWifiInfo().then(info => {
+      wifiInfo.wap = info.ssid;
+      wifiInfo.wap_mac = info.bssid;
+    }).catch(console.error);
+
+    // Enviar en lotes hasta que no haya más pendientes
+    while (true) {
+      const closedSessions = await getPendingClosedSessions(db, BATCH_SIZE);
+
+      if (closedSessions.length === 0) {
+        if (totalSent === 0) {
+          logger.debug('📡 No hay sesiones cerradas pendientes para /sessions/batch');
+        }
+        return { success: true, sent: totalSent };
+      }
+
+      logger.info(`📡 Enviando lote de ${closedSessions.length} sesiones cerradas a batch...`);
+
+      // Convertir a formato API de batches
+      const payload = {
+        unitId: UNIT,
+        sessions: closedSessions.map((e) => {
+          const apiFormat = convertEventToApiFormat(e, wifiInfo);
+          return {
+            id: apiFormat.uuid,
+            address: apiFormat.mac,
+            name: e.name || 'Unknown',
+            firstSeen: new Date(apiFormat.f_inicio).toISOString(),
+            lastSeen: new Date(apiFormat.f_final).toISOString(),
+            durationMs: apiFormat.duration * 1000
+          };
+        })
+      };
+
+      // Enviar a la API
+      const response = await makeHttpRequest(API_ENDPOINTS.SESSIONS_BATCH, {
+        method: 'POST',
+        headers: DEFAULT_HEADERS
+      }, payload);
+
+      if (response.ok) {
+        // Marcarlos como finalizados usando un estado definitivo para no re-sincronizarlos
+        const sessionIds = closedSessions.map(event => event.id);
+
+        await new Promise((resolve, reject) => {
+          const placeholders = sessionIds.map(() => '?').join(',');
+          db.run(`
+            UPDATE beacon_events 
+            SET syncStatus = 'batch_sent', syncTimestamp = ? 
+            WHERE id IN (${placeholders})
+          `, [new Date().toISOString(), ...sessionIds], (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+        totalSent += closedSessions.length;
+        logger.info(`✅ Lote sessions/batch enviado: ${closedSessions.length} (Total: ${totalSent})`);
+
+        if (closedSessions.length < BATCH_SIZE) {
+          logger.info(`✅ Sincronización batch completada: ${totalSent} sesiones enviadas`);
+          return { success: true, sent: totalSent };
+        }
+      } else {
+        logger.error(`❌ Error enviando lote a sessions/batch: HTTP ${response.status}`);
+        return { success: false, error: `HTTP ${response.status}`, sent: totalSent };
+      }
+    }
+  } catch (error) {
+    logger.error('❌ Error en sendClosedSessionsBatch:', error.message);
+    return { success: false, error: error.message, sent: totalSent };
+  }
+}
+
+
 // Función principal de sincronización
 async function syncBeaconEvents(db) {
   logger.info('🌐 Iniciando sincronización con API...');
@@ -391,13 +492,17 @@ async function syncBeaconEvents(db) {
   }
 
   try {
-    // Enviar eventos nuevos
+    // Enviar eventos nuevos (Beacon Tracker V1 actual)
     const newResults = await sendNewBeaconEvents(db);
 
-    // Actualizar eventos existentes
+    // Actualizar eventos existentes (Beacon Tracker V1 actual)
     const updateResults = await updateExistingBeaconEvents(db);
 
-    const totalProcessed = newResults.sent + updateResults.updated;
+    // --- NUEVO ---
+    // Enviar sesiones que ya estén "closed" al nuevo endpoint /sessions/batch
+    const batchResults = await sendClosedSessionsBatch(db);
+
+    const totalProcessed = newResults.sent + updateResults.updated + batchResults.sent;
 
     if (totalProcessed > 0) {
       logger.info(`✅ Sincronización completada: ${newResults.sent} nuevos, ${updateResults.updated} actualizados`);
@@ -502,13 +607,13 @@ async function syncGPSData(db) {
 
         totalSent += pendingGPS.length;
         logger.info(`✅ Lote enviado: ${pendingGPS.length} GPS (Total: ${totalSent})`);
-        
+
         // Si envió menos del lote completo, ya no hay más pendientes
         if (pendingGPS.length < BATCH_SIZE) {
           logger.info(`✅ Sincronización GPS completada: ${totalSent} registros enviados`);
           return { success: true, sent: totalSent };
         }
-        
+
         // Continuar con siguiente lote
         continue;
       } else {
