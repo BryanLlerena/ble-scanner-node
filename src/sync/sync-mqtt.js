@@ -482,7 +482,7 @@ async function startMQTTService() {
     // Inicializar cliente MQTT
     await initMQTT();
 
-    // Programar envíos cada segundo
+    // Programar envíos de GPS y beacons basándose en MQTT_INTERVAL de .env
     setInterval(() => {
       // Leer GPS y enviar a topic GPS
       readGPSData(() => {
@@ -491,7 +491,7 @@ async function startMQTTService() {
 
       // Enviar beacons a topic tracking leyendo el JSON en vivo
       publishBeacons();
-    }, 1000);
+    }, MQTT_INTERVAL);
 
     logger.info('✅ Servicio MQTT iniciado correctamente');
 
