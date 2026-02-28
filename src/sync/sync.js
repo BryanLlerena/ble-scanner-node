@@ -430,7 +430,7 @@ async function sendClosedSessionsBatch(db) {
 
       if (closedSessions.length === 0) {
         if (totalSent === 0) {
-          logger.debug('📡 No hay sesiones cerradas pendientes para /sessions/batch');
+          logger.info('📡 No hay sesiones cerradas pendientes para /sessions/batch');
         }
         return { success: true, sent: totalSent };
       }
