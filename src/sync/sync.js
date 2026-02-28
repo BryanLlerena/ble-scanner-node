@@ -604,6 +604,13 @@ async function syncGPSData(db) {
 
       logger.info(`📍 Enviando lote de ${pendingGPS.length} registros GPS...`);
 
+      // Imprimir el primer objeto que llega de la base de datos para ver qué campos tiene el JSON original
+      if (pendingGPS.length > 0) {
+        console.log("----- DEBUG GPS DATA -----");
+        console.log(JSON.stringify(pendingGPS[0], null, 2));
+        console.log("----------------------------");
+      }
+
       // Convertir a formato API (solo datos GPS)
       const payload = pendingGPS.map(gps => ({
         unit: gps.unit || UNIT,
