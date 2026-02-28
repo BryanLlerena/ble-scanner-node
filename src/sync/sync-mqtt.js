@@ -277,18 +277,16 @@ function convertEventToMqttFormat(event, wap) {
   };
 }
 
-// Enviar beacons por MQTT (topic tracking)
-async function sendBeaconDataToMQTT() {
+// Enviar beacons "en vivo" por MQTT (topic tracking) según nuevo formato
+async function publishBeacons(devices) {
   try {
     if (!mqttClient || !mqttClient.connected) {
       logger.debug('📡 Cliente MQTT no conectado, saltando envío beacons');
       return;
     }
 
-    const lastEvents = await getLastTwoEvents(db);
-
-    if (!lastEvents.length) {
-      logger.debug('📡 No hay datos beacon para enviar por MQTT');
+    if (!devices || !devices.length) {
+      logger.debug('📡 No hay datos beacon activos para enviar por MQTT');
       return;
     }
 
@@ -302,22 +300,28 @@ async function sendBeaconDataToMQTT() {
       logger.warn('⚠️ No se pudo obtener información WiFi:', wifiErr.message);
     }
 
-    const payload = {
-      unit: UNIT,
-      timestamp: new Date().toISOString(),
-      beacon: lastEvents.map(event => convertEventToMqttFormat(event, wifiInfo))
-    };
+    const payload = JSON.stringify({
+      unitId: UNIT,
+      count: devices.length,
+      devices: devices.map((d) => ({
+        address: d.mac || d.address,
+        name: d.name || 'Unknown',
+        rssi: d.rssi ?? null
+      })),
+      ts: new Date().toISOString(),
+      wap: wifiInfo.wap || "",
+      wap_mac: wifiInfo.wap_mac || ""
+    });
 
-    const message = JSON.stringify(payload, null, 2);
-    mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
+    mqttClient.publish(MQTT_TOPIC, payload, { qos: 0 }, (err) => {
       if (err) {
-        logger.error('❌ Error enviando beacons MQTT:', err.message);
+        logger.error('❌ Error enviando beacons en vivo MQTT:', err.message);
       } else {
-        logger.info(`📡 ${lastEvents.length} beacons enviados por MQTT: ${MQTT_TOPIC}`);
+        logger.info(`📡 ${devices.length} beacons en vivo enviados por MQTT: ${MQTT_TOPIC}`);
       }
     });
   } catch (error) {
-    logger.error('❌ Error en sendBeaconDataToMQTT:', error.message);
+    logger.error('❌ Error en publishBeacons:', error.message);
   }
 }
 
@@ -403,8 +407,8 @@ async function startMQTTService() {
         sendGPSDataToMQTT();
       });
 
-      // Enviar beacons a topic tracking
-      sendBeaconDataToMQTT();
+      // En lugar de enviar desde BD cada segundo,
+      // esto debe ser llamado desde index.js cuando detecta un dispositivo vivo.
     }, 1000);
 
     logger.info('✅ Servicio MQTT iniciado correctamente');
@@ -445,7 +449,7 @@ if (require.main === module) {
 
 module.exports = {
   startMQTTService,
-  sendBeaconDataToMQTT,
+  publishBeacons,
   sendGPSDataToMQTT,
   initMQTT,
   initDatabase

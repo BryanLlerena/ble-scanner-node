@@ -5,7 +5,8 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
-// Sincronización ahora manejada por sync-processor.js
+// Sincronización ahora manejada por sync-processor.js y publicador mqtt
+const { publishBeacons } = require('../sync/sync-mqtt');
 const logger = require('../utils/logger');
 
 // Configuración desde variables de entorno
@@ -598,7 +599,10 @@ setInterval(() => {
     }
   }
 
+  // Enviar los beacons vivos vía MQTT
+  publishBeacons(liveList);
+
   fs.writeFile(LIVE_DUMP_FILE, JSON.stringify(liveList, null, 2), (err) => {
     if (err) console.error('Error writing live dump:', err.message);
   });
-}, 2000); // Actualizar archivo cada 2s
+}, 2000); // Actualizar archivo y enviar MQTT cada 2s
