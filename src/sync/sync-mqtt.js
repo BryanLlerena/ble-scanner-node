@@ -14,6 +14,13 @@ async function sendGPSDataToMQTT() {
       return;
     }
 
+    // Si pasaron más de 5 segundos desde la última lectura exitosa del GPS,
+    // significa que perdió señal. No enviar el "fantasma" de la última ubicación.
+    if (Date.now() - lastGPSData.timestamp > 5000) {
+      logger.debug('📡 Señal GPS perdida, omitiendo envío MQTT de posición antigua');
+      return;
+    }
+
     // Se envía el dato actual guardado (el más reciente de esta iteración)
     lastGPSPublishTime = Date.now();
 
