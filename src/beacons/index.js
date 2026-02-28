@@ -11,7 +11,10 @@ const logger = require('../utils/logger');
 // Configuración desde variables de entorno
 const SCAN_RANGE = parseFloat(process.env.SCAN_RANGE) || 80;
 const DEBOUNCE_TIME = parseInt(process.env.DEBOUNCE_TIME) || 300;
-const TARGET_MAC_PREFIX = process.env.TARGET_MAC_PREFIX || "bc:57:29";
+const TARGET_MAC_PREFIXES = (process.env.TARGET_MAC_PREFIX || "bc:57:29")
+  .split(',')
+  .map(prefix => prefix.trim().toLowerCase())
+  .filter(prefix => prefix.length > 0);
 const UNIT = process.env.UNIT || "TEST_UNIT";
 const DB_FILE = process.env.DB_FILE || "beacons.db";
 const VALIDATE_DISTANCE = process.env.VALIDATE_DISTANCE !== 'false'; // Defaults to true
@@ -23,7 +26,7 @@ logger.info('🔧 Configuración cargada:');
 logger.info(`   SCAN_RANGE: ${SCAN_RANGE}m`);
 logger.info(`   VALIDATE_DISTANCE: ${VALIDATE_DISTANCE}`);
 logger.info(`   DEBOUNCE_TIME: ${DEBOUNCE_TIME}s`);
-logger.info(`   TARGET_MAC_PREFIX: ${TARGET_MAC_PREFIX}`);
+logger.info(`   TARGET_MAC_PREFIXES: ${TARGET_MAC_PREFIXES.join(', ')}`);
 logger.info(`   UNIT: ${UNIT}`);
 // SYNC_INTERVAL ahora en sync-processor.js
 logger.info(`   DB_FILE: ${DB_FILE}`);
@@ -448,12 +451,14 @@ noble.on('discover', peripheral => {
     logger.debug(`   Tipo: ${deviceData.type}`);
     logger.debug(`   ManufacturerData: ${deviceData.manufacturerData || 'Ninguno'}`);
     logger.debug(`   ServiceData: ${deviceData.serviceData || 'Ninguno'}`);
-    logger.debug(`   Cumple MAC filter: ${deviceData.mac.startsWith(TARGET_MAC_PREFIX)}`);
+    const matchesMacFilter = TARGET_MAC_PREFIXES.some(prefix => deviceData.mac.toLowerCase().startsWith(prefix));
+    logger.debug(`   Cumple MAC filter: ${matchesMacFilter}`);
     logger.debug('   ---');
   }
 
   // Solo procesar beacons con MAC específica (igual que tu condicional React Native)
-  if (deviceData.isBeacon && deviceData.mac.startsWith(TARGET_MAC_PREFIX)) {
+  const matchesMacFilter = TARGET_MAC_PREFIXES.some(prefix => deviceData.mac.toLowerCase().startsWith(prefix));
+  if (deviceData.isBeacon && matchesMacFilter) {
     detectedDevicesCache.set(deviceData.deviceId, deviceData);
 
     // Actualizar mapa en vivo (sin filtro de distancia, solo MAC)
@@ -492,7 +497,8 @@ async function processDetectedDevices() {
   detectedDevicesCache.clear();
 
   for (const device of devicesToProcess) {
-    if (device.isBeacon && device.mac.startsWith(TARGET_MAC_PREFIX)) {
+    const matchesMacFilter = TARGET_MAC_PREFIXES.some(prefix => device.mac.toLowerCase().startsWith(prefix));
+    if (device.isBeacon && matchesMacFilter) {
       try {
         await new Promise((resolve, reject) => {
           getOpenEventByMac(device.mac, (err, currentEvent) => {
