@@ -316,10 +316,10 @@
             <!-- <div class="header"> Removed individual header </div> -->
 
             <div class="card">
-                <h3>Conexión WiFi Actual</h3>
+                <h3>Estado General (WiFi y GPS)</h3>
                 <div class="status-grid">
                     <div class="stat-card">
-                        <div class="stat-label">Estado</div>
+                        <div class="stat-label">Conexión WiFi</div>
                         <div class="stat-value" id="current-status">-</div>
                     </div>
                     <div class="stat-card">
@@ -329,6 +329,10 @@
                     <div class="stat-card">
                         <div class="stat-label">BSSID (MAC)</div>
                         <div class="stat-value" id="current-bssid">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Velocidad GPS</div>
+                        <div class="stat-value" id="current-speed">- km/h</div>
                     </div>
                 </div>
             </div>
@@ -513,6 +517,12 @@
                     gpsMap.setView([lat, lon], 17);
                     const speeedText = data.speed !== undefined ? ` | Vel: ${parseFloat(data.speed).toFixed(1)} km/h` : '';
                     document.getElementById('gpsInfo').textContent = `Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}${speeedText} | ${data.timestamp ? new Date(data.timestamp).toLocaleString() : ''}`;
+
+                    // Actualizar recuadro principal de velocidad si existe
+                    const currentSpeedEl = document.getElementById('current-speed');
+                    if (currentSpeedEl) {
+                        currentSpeedEl.textContent = data.speed !== undefined ? `${parseFloat(data.speed).toFixed(1)} km/h` : '- km/h';
+                    }
 
                     // Actualizar tabla Última Posición GPS
                     const tbodyLatest = document.getElementById('gpsLatestTableBody');
