@@ -49,6 +49,8 @@ const mqtt = require('mqtt');
 const sqlite3 = require('sqlite3').verbose();
 const logger = require('../utils/logger');
 const wifiUtils = require('../wifi/wifi-utils');
+const fs = require('fs');
+const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { spawn } = require('child_process');
 
@@ -278,11 +280,22 @@ function convertEventToMqttFormat(event, wap) {
 }
 
 // Enviar beacons "en vivo" por MQTT (topic tracking) según nuevo formato
-async function publishBeacons(devices) {
+async function publishBeacons() {
   try {
     if (!mqttClient || !mqttClient.connected) {
       logger.debug('📡 Cliente MQTT no conectado, saltando envío beacons');
       return;
+    }
+
+    const liveBeaconsPath = path.join(__dirname, '../../public/live_beacons.json');
+    let devices = [];
+    if (fs.existsSync(liveBeaconsPath)) {
+      try {
+        const fileContent = fs.readFileSync(liveBeaconsPath, 'utf8');
+        devices = JSON.parse(fileContent);
+      } catch (parseErr) {
+        logger.error('❌ Error parseando live_beacons.json:', parseErr.message);
+      }
     }
 
     if (!devices || !devices.length) {
@@ -407,8 +420,8 @@ async function startMQTTService() {
         sendGPSDataToMQTT();
       });
 
-      // En lugar de enviar desde BD cada segundo,
-      // esto debe ser llamado desde index.js cuando detecta un dispositivo vivo.
+      // Enviar beacons a topic tracking leyendo el JSON en vivo
+      publishBeacons();
     }, 1000);
 
     logger.info('✅ Servicio MQTT iniciado correctamente');
