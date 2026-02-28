@@ -22,7 +22,9 @@
         }
 
         /* Leaflet custom height for map */
-        #gpsMap { min-height: 350px; }
+        #gpsMap {
+            min-height: 350px;
+        }
 
         .dark-mode {
             --bg: #0f172a;
@@ -352,11 +354,32 @@
                 </table>
             </div>
 
+            <!-- Última Posición GPS -->
+            <div class="card">
+                <h3>Última Posición GPS</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Fecha/Hora</th>
+                            <th>Latitud</th>
+                            <th>Longitud</th>
+                            <th>Velocidad (km/h)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="gpsLatestTableBody">
+                        <tr>
+                            <td colspan="4">Cargando...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
             <!-- GPS MAPA EN TIEMPO REAL -->
             <div class="card">
                 <h3>Ubicación GPS Actual</h3>
                 <div id="gpsMap" style="width:100%;height:350px;background:#e5e7eb;border-radius:8px;"></div>
-                <div id="gpsInfo" style="margin-top:10px;color:var(--text-light);font-size:0.95em;">Cargando ubicación...</div>
+                <div id="gpsInfo" style="margin-top:10px;color:var(--text-light);font-size:0.95em;">Cargando
+                    ubicación...</div>
             </div>
 
             <div class="actions">
@@ -446,11 +469,12 @@
                             <th>Fecha</th>
                             <th>Latitud</th>
                             <th>Longitud</th>
+                            <th>Velocidad (km/h)</th>
                         </tr>
                     </thead>
                     <tbody id="gpsHistoryTableBody">
                         <tr>
-                            <td colspan="3">Cargando...</td>
+                            <td colspan="4">Cargando...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -462,67 +486,88 @@
     <div id="notification" class="notification"></div>
 
     <script>
-                // --- LEAFLET MAP LOGIC ---
-                let gpsMap, gpsMarker, gpsMapUserMoved = false, lastGpsLat = 0, lastGpsLon = 0;
-                function initGpsMap() {
-                    if (gpsMap) return;
-                    gpsMap = L.map('gpsMap').setView([0,0], 2);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        maxZoom: 19,
-                        attribution: '© OpenStreetMap'
-                    }).addTo(gpsMap);
-                    gpsMarker = L.marker([0,0]).addTo(gpsMap);
-                    gpsMap.on('movestart', function() { gpsMapUserMoved = true; });
-                }
-                async function updateGpsMap() {
-                    try {
-                        const res = await fetch('/api/gps/latest');
-                        if (!res.ok) throw new Error('No GPS');
-                        const data = await res.json();
-                        if (!gpsMap) initGpsMap();
-                        const lat = parseFloat(data.latitude);
-                        const lon = parseFloat(data.longitude);
-                        lastGpsLat = lat;
-                        lastGpsLon = lon;
-                        gpsMarker.setLatLng([lat, lon]);
-                        if (!gpsMapUserMoved) {
-                            gpsMap.setView([lat, lon], 17);
-                        }
-                        document.getElementById('gpsInfo').textContent = `Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)} | ${data.timestamp ? new Date(data.timestamp).toLocaleString() : ''}`;
-                    } catch (e) {
-                        document.getElementById('gpsInfo').textContent = 'No hay datos GPS recientes.';
+        // --- LEAFLET MAP LOGIC ---
+        let gpsMap, gpsMarker, gpsMapUserMoved = false, lastGpsLat = 0, lastGpsLon = 0;
+        function initGpsMap() {
+            if (gpsMap) return;
+            gpsMap = L.map('gpsMap').setView([0, 0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap'
+            }).addTo(gpsMap);
+            gpsMarker = L.marker([0, 0]).addTo(gpsMap);
+            gpsMap.on('movestart', function () { gpsMapUserMoved = true; });
+        }
+        async function updateGpsMap() {
+            try {
+                const res = await fetch('/api/gps/latest');
+                if (!res.ok) throw new Error('No GPS');
+                const data = await res.json();
+                if (!gpsMap) initGpsMap();
+                const lat = parseFloat(data.latitude);
+                const lon = parseFloat(data.longitude);
+                lastGpsLat = lat;
+                lastGpsLon = lon;
+                gpsMarker.setLatLng([lat, lon]);
+                if (!gpsMapUserMoved) {
+                    gpsMap.setView([lat, lon], 17);
+                    const speeedText = data.speed !== undefined ? ` | Vel: ${parseFloat(data.speed).toFixed(1)} km/h` : '';
+                    document.getElementById('gpsInfo').textContent = `Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}${speeedText} | ${data.timestamp ? new Date(data.timestamp).toLocaleString() : ''}`;
+
+                    // Actualizar tabla Última Posición GPS
+                    const tbodyLatest = document.getElementById('gpsLatestTableBody');
+                    if (tbodyLatest) {
+                        const dateStr = data.timestamp ? new Date(data.timestamp).toLocaleString() : '-';
+                        const speedVal = data.speed !== undefined ? parseFloat(data.speed).toFixed(2) : '-';
+                        tbodyLatest.innerHTML = `
+                            <tr>
+                                <td>${dateStr}</td>
+                                <td>${lat.toFixed(6)}</td>
+                                <td>${lon.toFixed(6)}</td>
+                                <td><b>${speedVal}</b></td>
+                            </tr>
+                        `;
                     }
                 }
-                function recenterGpsMap() {
-                    if (lastGpsLat && lastGpsLon) {
-                        gpsMap.setView([lastGpsLat, lastGpsLon], 17);
-                        gpsMapUserMoved = false;
-                    }
+            } catch (e) {
+                document.getElementById('gpsInfo').textContent = 'No hay datos GPS recientes.';
+                const tbodyLatest = document.getElementById('gpsLatestTableBody');
+                if (tbodyLatest) tbodyLatest.innerHTML = `<tr><td colspan="4">No hay datos GPS</td></tr>`;
+            }
+        }
+        function recenterGpsMap() {
+            if (lastGpsLat && lastGpsLon) {
+                gpsMap.setView([lastGpsLat, lastGpsLon], 17);
+                gpsMapUserMoved = false;
+            }
+        }
+        async function loadGpsHistory() {
+            try {
+                const res = await fetch('/api/gps/history');
+                const data = await res.json();
+                const tbody = document.getElementById('gpsHistoryTableBody');
+                tbody.innerHTML = '';
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">No hay registros</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">No hay registros</td></tr>';
+                    return;
                 }
-                async function loadGpsHistory() {
-                    try {
-                        const res = await fetch('/api/gps/history');
-                        const data = await res.json();
-                        const tbody = document.getElementById('gpsHistoryTableBody');
-                        tbody.innerHTML = '';
-                        if (data.length === 0) {
-                            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">No hay registros</td></tr>';
-                            return;
-                        }
-                        data.forEach(row => {
-                            const tr = document.createElement('tr');
-                            const date = new Date(row.timestamp).toLocaleString();
-                            tr.innerHTML = `
+                data.forEach(row => {
+                    const tr = document.createElement('tr');
+                    const date = new Date(row.timestamp).toLocaleString();
+                    const speedVal = row.speed !== undefined ? parseFloat(row.speed).toFixed(2) : '-';
+                    tr.innerHTML = `
                                 <td>${date}</td>
                                 <td>${row.latitude}</td>
                                 <td>${row.longitude}</td>
+                                <td>${speedVal}</td>
                             `;
-                            tbody.appendChild(tr);
-                        });
-                    } catch (e) {
-                        document.getElementById('gpsHistoryTableBody').innerHTML = '<tr><td colspan="3">Error cargando historial</td></tr>';
-                    }
-                }
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                document.getElementById('gpsHistoryTableBody').innerHTML = '<tr><td colspan="4">Error cargando historial</td></tr>';
+            }
+        }
         // --- NAVIGATION LOGIC ---
         function switchView(viewName) {
             document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
@@ -751,7 +796,7 @@
         // Init
         loadTheme();
         loadAllStatus();
-        
+
         // Polling independiente
         setInterval(loadLiveBle, 1000);         // Beacons cada 1 segundo (rápido)
         setInterval(loadCurrentStatus, 5000);   // WiFi cada 5 segundos (pesado)
@@ -772,6 +817,7 @@
 </body>
 
 <!-- Leaflet.js CSS y JS -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
 </html>
