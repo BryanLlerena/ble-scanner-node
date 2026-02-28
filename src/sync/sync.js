@@ -616,6 +616,7 @@ async function syncGPSData(db) {
         unit: gps.unit || UNIT,
         latitude: gps.latitude,
         longitude: gps.longitude,
+        speed: gps.speed || 0,
         fix: gps.fix,
         timestamp: gps.timestamp
       }));

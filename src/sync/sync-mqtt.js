@@ -37,6 +37,7 @@ async function sendGPSDataToMQTT() {
       timestamp: new Date().toISOString(),
       latitude: lastGPSData.latitude,
       longitude: lastGPSData.longitude,
+      speed: lastGPSData.speed || 0,
       fix: lastGPSData.fix,
       wap: wifiInfo.ssid || "",
       wap_mac: wifiInfo.bssid || ""
@@ -60,6 +61,7 @@ const mqtt = require('mqtt');
 const sqlite3 = require('sqlite3').verbose();
 const logger = require('../utils/logger');
 const wifiUtils = require('../wifi/wifi-utils');
+const { calculateSpeedKmH } = require('../utils/gps-utils');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -121,15 +123,20 @@ async function getWifiInfo() {
 function saveGPSToDatabase(gpsData) {
   const timestamp = new Date().toISOString();
 
-  db.run(`
-    INSERT INTO gps_data (unit, latitude, longitude, fix, timestamp, created, syncStatus)
-    VALUES (?, ?, ?, ?, ?, ?, 'pending')
-  `, [UNIT, gpsData.latitude, gpsData.longitude, gpsData.fix, timestamp, timestamp], (err) => {
-    if (err) {
-      logger.error('❌ Error guardando GPS en BD:', err.message);
-    } else {
-      logger.info(`📍 GPS guardado localmente: lat=${gpsData.latitude.toFixed(4)}, lon=${gpsData.longitude.toFixed(4)}`);
-    }
+  // Asegurar que exista la columna speed en la base de datos (por si es una versión anterior)
+  db.run(`ALTER TABLE gps_data ADD COLUMN speed REAL`, () => {
+    // Ignoramos el error si la columna ya existe
+
+    db.run(`
+      INSERT INTO gps_data (unit, latitude, longitude, speed, fix, timestamp, created, syncStatus)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+    `, [UNIT, gpsData.latitude, gpsData.longitude, gpsData.speed || 0, gpsData.fix, timestamp, timestamp], (err) => {
+      if (err) {
+        logger.error('❌ Error guardando GPS en BD:', err.message);
+      } else {
+        logger.info(`📍 GPS guardado localmente: lat=${gpsData.latitude.toFixed(4)}, lon=${gpsData.longitude.toFixed(4)}, vel=${(gpsData.speed || 0).toFixed(1)}km/h`);
+      }
+    });
   });
 }
 
@@ -150,12 +157,23 @@ function startGPSReader() {
           const lat = nmeaToDecimal(parts[2], parts[3]);
           const lon = nmeaToDecimal(parts[4], parts[5]);
           if (lat !== null && lon !== null) {
-            lastGPSData = {
+
+            const newGPSPoint = {
               latitude: lat,
               longitude: lon,
               fix: parts[6],
               timestamp: Date.now()
             };
+
+            // Calcular velocidad si tenemos un punto anterior
+            if (lastGPSData) {
+              newGPSPoint.speed = calculateSpeedKmH(lastGPSData, newGPSPoint);
+            } else {
+              newGPSPoint.speed = 0; // Primer punto o reinicio
+            }
+
+            lastGPSData = newGPSPoint;
+
             // Guardado automático e independiente en local
             saveGPSToDatabase(lastGPSData);
           }
