@@ -279,6 +279,9 @@ function convertEventToMqttFormat(event, wap) {
   };
 }
 
+// Registro de las lecturas enviadas para no repetir la misma lectura
+let lastSentTimestamps = {};
+
 // Enviar beacons "en vivo" por MQTT (topic tracking) según nuevo formato
 async function publishBeacons() {
   try {
@@ -303,6 +306,46 @@ async function publishBeacons() {
       return;
     }
 
+    const now = Date.now();
+
+    // Filtrar para enviar SOLO las lecturas nuevas y recientes
+    const currentDevices = devices.filter(d => {
+      const dTs = new Date(d.timestamp).getTime();
+      const mac = d.mac || d.beaconMac || d.address;
+
+      // Si la lectura es más antigua de 2.5 segundos, la ignoramos.
+      // (El archivo live_beacons se actualiza cada 2 segs)
+      if (now - dTs > 2500) {
+        return false;
+      }
+
+      // Si ya enviamos EXACTAMENTE esta lectura, la ignoramos
+      if (lastSentTimestamps[mac] === dTs) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (!currentDevices.length) {
+      logger.debug('📡 No hay lecturas nuevas en este momento exacto');
+      return;
+    }
+
+    // Actualizar registro de enviados
+    currentDevices.forEach(d => {
+      const dTs = new Date(d.timestamp).getTime();
+      const mac = d.mac || d.beaconMac || d.address;
+      lastSentTimestamps[mac] = dTs;
+    });
+
+    // Limpieza de memoria (borrar datos de hace más de 1 minuto)
+    for (const mac in lastSentTimestamps) {
+      if (now - lastSentTimestamps[mac] > 60000) {
+        delete lastSentTimestamps[mac];
+      }
+    }
+
     // Obtener información WiFi
     let wifiInfo = { wap: "", wap_mac: "" };
     try {
@@ -315,8 +358,8 @@ async function publishBeacons() {
 
     const payload = JSON.stringify({
       unitId: UNIT,
-      count: devices.length,
-      devices: devices.map((d) => ({
+      count: currentDevices.length,
+      devices: currentDevices.map((d) => ({
         address: d.mac || d.beaconMac || d.address,
         name: d.name || 'Unknown',
         rssi: d.rssi ?? null
@@ -330,7 +373,7 @@ async function publishBeacons() {
       if (err) {
         logger.error('❌ Error enviando beacons en vivo MQTT:', err.message);
       } else {
-        logger.info(`📡 ${devices.length} beacons en vivo enviados por MQTT: ${MQTT_TOPIC}`);
+        logger.info(`📡 ${currentDevices.length} beacons en vivo enviados por MQTT: ${MQTT_TOPIC}`);
       }
     });
   } catch (error) {
