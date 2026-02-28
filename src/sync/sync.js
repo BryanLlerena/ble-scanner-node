@@ -185,7 +185,7 @@ function getPendingClosedSessions(db, limit = 500) {
   return new Promise((resolve, reject) => {
     db.all(`
       SELECT * FROM beacon_events 
-      WHERE eventState = 'closed' AND (syncStatus = 'pending' OR syncStatus = 'updated')
+      WHERE eventState = 'closed' AND batch_sent = 0
       ORDER BY id ASC
       LIMIT ?
     `, [limit], (err, rows) => {
@@ -215,13 +215,31 @@ function getPendingUpdateEvents(db) {
   });
 }
 
-// Marcar eventos como sincronizados
+// Marcar eventos como enviados
 function markEventsAsSent(db, eventIds) {
   return new Promise((resolve, reject) => {
     const placeholders = eventIds.map(() => '?').join(',');
     db.run(`
       UPDATE beacon_events 
       SET syncStatus = 'sent', syncTimestamp = ? 
+      WHERE id IN (${placeholders})
+    `, [new Date().toISOString(), ...eventIds], (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+// Marcar eventos cerrados como batch enviados
+function markEventsAsBatchSent(db, eventIds) {
+  return new Promise((resolve, reject) => {
+    const placeholders = eventIds.map(() => '?').join(',');
+    db.run(`
+      UPDATE beacon_events 
+      SET batch_sent = 1, syncTimestamp = ? 
       WHERE id IN (${placeholders})
     `, [new Date().toISOString(), ...eventIds], (err) => {
       if (err) {
@@ -445,17 +463,12 @@ async function sendClosedSessionsBatch(db) {
         // Marcarlos como finalizados usando un estado definitivo para no re-sincronizarlos
         const sessionIds = closedSessions.map(event => event.id);
 
-        await new Promise((resolve, reject) => {
-          const placeholders = sessionIds.map(() => '?').join(',');
-          db.run(`
-            UPDATE beacon_events 
-            SET syncStatus = 'batch_sent', syncTimestamp = ? 
-            WHERE id IN (${placeholders})
-          `, [new Date().toISOString(), ...sessionIds], (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
+        try {
+          await markEventsAsBatchSent(db, sessionIds);
+        } catch (dbErr) {
+          logger.error(`❌ Error marcando lote batch_sent en SQLite:`, dbErr.message);
+          // Opcional: break o continuar, pero mejor no return error para no colapsar la app
+        }
 
         totalSent += closedSessions.length;
         logger.info(`✅ Lote sessions/batch enviado: ${closedSessions.length} (Total: ${totalSent})`);
@@ -500,7 +513,13 @@ async function syncBeaconEvents(db) {
 
     // --- NUEVO ---
     // Enviar sesiones que ya estén "closed" al nuevo endpoint /sessions/batch
-    const batchResults = await sendClosedSessionsBatch(db);
+    let batchResults = { sent: 0 };
+    try {
+      logger.debug('🚀 Iniciando fase de sesiones batch...');
+      batchResults = await sendClosedSessionsBatch(db);
+    } catch (batchErr) {
+      logger.error('❌ Error no capturado en sendClosedSessionsBatch:', batchErr.message);
+    }
 
     const totalProcessed = newResults.sent + updateResults.updated + batchResults.sent;
 

@@ -60,7 +60,8 @@ db.serialize(() => {
     f_final TEXT,
     unit TEXT,
     manufacturerData TEXT,
-    serviceData TEXT
+    serviceData TEXT,
+    batch_sent INTEGER DEFAULT 0
   )`);
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_beacon_mac ON beacon_events(beaconMac)`);
@@ -69,6 +70,7 @@ db.serialize(() => {
   db.run(`ALTER TABLE beacon_events ADD COLUMN syncTimestamp DATETIME`, () => { });
   db.run(`ALTER TABLE beacon_events ADD COLUMN uuid TEXT`, () => { });
   db.run(`ALTER TABLE beacon_events ADD COLUMN created TEXT`, () => { });
+  db.run(`ALTER TABLE beacon_events ADD COLUMN batch_sent INTEGER DEFAULT 0`, () => { });
 
   // Tabla GPS separada
   db.run(`CREATE TABLE IF NOT EXISTS gps_data (
