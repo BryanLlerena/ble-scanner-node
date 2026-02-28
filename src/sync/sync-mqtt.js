@@ -225,13 +225,13 @@ function calculateBeaconStats(rssiArray) {
   };
 }
 
-// Obtener los últimos 5 eventos de la tabla
-function getLastFiveEvents(db) {
+// Obtener los últimos 2 eventos de la tabla
+function getLastTwoEvents(db) {
   return new Promise((resolve, reject) => {
     db.all(`
       SELECT * FROM beacon_events 
       ORDER BY f_final DESC 
-      LIMIT 5
+      LIMIT 2
     `, (err, rows) => {
       if (err) {
         reject(err);
@@ -285,7 +285,7 @@ async function sendBeaconDataToMQTT() {
       return;
     }
 
-    const lastEvents = await getLastFiveEvents(db);
+    const lastEvents = await getLastTwoEvents(db);
 
     if (!lastEvents.length) {
       logger.debug('📡 No hay datos beacon para enviar por MQTT');
