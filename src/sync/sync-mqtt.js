@@ -14,13 +14,8 @@ async function sendGPSDataToMQTT() {
       return;
     }
 
-    // Evitar enviar el mismo dato GPS repetitivo en menos del tiempo configurado en .env
-    const now = Date.now();
-    // Se resta un pequeño margen (100ms) para tolerar la precisión del setInterval
-    if (now - lastGPSPublishTime < (MQTT_INTERVAL - 100)) {
-      return;
-    }
-    lastGPSPublishTime = now;
+    // Se envía el dato actual guardado (el más reciente de esta iteración)
+    lastGPSPublishTime = Date.now();
 
     // Obtener información WiFi en caché
     let wifiInfo = { ssid: "", bssid: "" };
@@ -131,42 +126,20 @@ function saveGPSToDatabase(gpsData) {
   });
 }
 
-// Función para leer datos GPS
-function readGPSData(callback) {
-  // No lanzar otro proceso si ya hay uno corriendo
-  if (gpsProcessRunning) {
-    logger.debug('⏳ Proceso GPS ya en ejecución, saltando...');
-    return;
-  }
-
+// Función para leer datos GPS en segundo plano de manera continua
+function startGPSReader() {
+  if (gpsProcessRunning) return;
   gpsProcessRunning = true;
-  const gpsProcess = spawn('sh', ['/usr/bin/gps_runner.sh']);
-  let gpsDataReceived = false;
 
-  // Timeout de 5 segundos
-  const timeout = setTimeout(() => {
-    if (!gpsDataReceived) {
-      logger.warn('⏱️ Timeout GPS (5s), matando proceso');
-      gpsProcess.kill();
-      gpsProcessRunning = false;
-    }
-  }, 5000);
+  logger.info('🚀 Iniciando lectura continua de GPS...');
+  const gpsProcess = spawn('sh', ['/usr/bin/gps_runner.sh']);
 
   gpsProcess.stdout.on('data', (data) => {
-    if (gpsDataReceived) return; // Si ya cortamos, ignorar todo lo que llegue rezagado en el stream de Node
-
     const lines = data.toString().split('\n');
     for (const line of lines) {
-      // Si ya recibimos un dato en esta ráfaga, ignorar el resto
-      if (gpsDataReceived) {
-        break;
-      }
-
-      // Buscar línea NMEA GGA
       if (line.includes('GGA')) {
         const parts = line.split(',');
         if (parts[2] && parts[4] && parts[6] !== '0') {
-          // Convertir NMEA a decimal
           const lat = nmeaToDecimal(parts[2], parts[3]);
           const lon = nmeaToDecimal(parts[4], parts[5]);
           if (lat !== null && lon !== null) {
@@ -176,16 +149,8 @@ function readGPSData(callback) {
               fix: parts[6],
               timestamp: Date.now()
             };
-
-            // Guardar en base de datos local
+            // Guardado automático e independiente en local
             saveGPSToDatabase(lastGPSData);
-
-            gpsDataReceived = true;
-            clearTimeout(timeout);
-            callback(lastGPSData);
-            gpsProcess.kill();
-            gpsProcessRunning = false;
-            break;
           }
         }
       }
@@ -196,15 +161,10 @@ function readGPSData(callback) {
     logger.warn('GPS stderr:', data.toString());
   });
 
-  gpsProcess.on('error', (err) => {
-    logger.error('GPS process error:', err.message);
-    clearTimeout(timeout);
-    gpsProcessRunning = false;
-  });
-
   gpsProcess.on('exit', () => {
-    clearTimeout(timeout);
+    logger.warn('⚠️ Proceso GPS terminado. Reiniciando en 5s...');
     gpsProcessRunning = false;
+    setTimeout(startGPSReader, 5000); // Intentar reiniciar si se cae
   });
 }
 
@@ -490,12 +450,13 @@ async function startMQTTService() {
     // Inicializar cliente MQTT
     await initMQTT();
 
+    // Iniciar el lector GPS en segundo plano *una sola vez*
+    startGPSReader();
+
     // Programar envíos de GPS y beacons basándose en MQTT_INTERVAL de .env
     setInterval(() => {
-      // Leer GPS y enviar a topic GPS
-      readGPSData(() => {
-        sendGPSDataToMQTT();
-      });
+      // Tomar simplemente el último lastGPSData que tengamos en memoria y enviarlo
+      sendGPSDataToMQTT();
 
       // Enviar beacons a topic tracking leyendo el JSON en vivo
       publishBeacons();
