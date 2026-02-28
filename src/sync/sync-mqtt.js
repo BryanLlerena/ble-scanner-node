@@ -88,8 +88,22 @@ if (MQTT_USERNAME && MQTT_PASSWORD) {
   mqttOptions.password = MQTT_PASSWORD;
 }
 
+let cachedWifiInfo = { ssid: "", bssid: "" };
+let lastWifiCheck = 0;
+
 async function getWifiInfo() {
-  return await wifiUtils.getWifiInfo();
+  const now = Date.now();
+  // Solo consultar el WiFi real al sistema operativo cada 60 segundos
+  // para evitar bloquear el procesador de la Raspberry Pi enviando comandos
+  if (now - lastWifiCheck > 60000) {
+    try {
+      cachedWifiInfo = await wifiUtils.getWifiInfo();
+      lastWifiCheck = now;
+    } catch (e) {
+      logger.warn('⚠️ No se pudo obtener información WiFi en caché:', e.message);
+    }
+  }
+  return cachedWifiInfo;
 }
 
 // Función para guardar GPS en base de datos local
@@ -280,7 +294,7 @@ function convertEventToMqttFormat(event, wap) {
 }
 
 // Registro de las lecturas enviadas para no repetir la misma lectura
-let lastSentTimestamps = {};
+let lastSentData = {};
 
 // Enviar beacons "en vivo" por MQTT (topic tracking) según nuevo formato
 async function publishBeacons() {
@@ -319,8 +333,9 @@ async function publishBeacons() {
         return false;
       }
 
-      // Si ya enviamos EXACTAMENTE esta lectura, la ignoramos
-      if (lastSentTimestamps[mac] === dTs) {
+      // Validar si la lectura es duplicada (mismo tiempo Y mismo rssi)
+      const lastSent = lastSentData[mac];
+      if (lastSent && lastSent.timestamp === dTs && lastSent.rssi === d.rssi) {
         return false;
       }
 
@@ -332,17 +347,20 @@ async function publishBeacons() {
       return;
     }
 
-    // Actualizar registro de enviados
+    // Actualizar registro de enviados comprobados
     currentDevices.forEach(d => {
       const dTs = new Date(d.timestamp).getTime();
       const mac = d.mac || d.beaconMac || d.address;
-      lastSentTimestamps[mac] = dTs;
+      lastSentData[mac] = {
+        timestamp: dTs,
+        rssi: d.rssi
+      };
     });
 
     // Limpieza de memoria (borrar datos de hace más de 1 minuto)
-    for (const mac in lastSentTimestamps) {
-      if (now - lastSentTimestamps[mac] > 60000) {
-        delete lastSentTimestamps[mac];
+    for (const mac in lastSentData) {
+      if (now - lastSentData[mac].timestamp > 60000) {
+        delete lastSentData[mac];
       }
     }
 
