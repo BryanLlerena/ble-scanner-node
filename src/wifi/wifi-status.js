@@ -25,7 +25,7 @@ const COMPANY = process.env.MQTT_COMPANY || 'gunjop';
 const MQTT_BROKER = process.env.MQTT_BROKER || 'mqtt://localhost:1883';
 const MQTT_USERNAME = process.env.MQTT_USERNAME || null;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD || null;
-const MQTT_TOPIC = `${COMPANY}/unit/${UNIT.toLowerCase()}/wifi`;
+const MQTT_TOPIC = `${COMPANY}/truck/${UNIT.toLowerCase()}/wifi`;
 const MQTT_CLIENT_ID = `wifi_${uuidv4()}_${UNIT}`;
 
 // Conectar a la base de datos WiFi

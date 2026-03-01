@@ -76,7 +76,7 @@ const MQTT_CLIENT_ID = `${uuidv4()}_${UNIT}`;
 const MQTT_USERNAME = process.env.MQTT_USERNAME || null;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD || null;
 const MQTT_INTERVAL = (parseInt(process.env.MQTT_INTERVAL) || 60) * 1000;
-const MQTT_TOPIC = `${COMPANY}/unit/${UNIT.toLowerCase()}/tracking`;
+const MQTT_TOPIC = `${COMPANY}/truck/${UNIT.toLowerCase()}/tracking`;
 const MQTT_GPS_TOPIC = `${COMPANY}/unit/${UNIT.toLowerCase()}/gps`;
 
 // Cliente MQTT
