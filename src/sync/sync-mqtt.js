@@ -1,6 +1,30 @@
 let lastGPSData = null;
 let lastGPSPublishTime = 0; // Control de tiempo para envíos GPS
 
+// Servicio MQTT para envío de datos de beacons
+require('dotenv').config();
+const mqtt = require('mqtt');
+const sqlite3 = require('sqlite3').verbose();
+const logger = require('../utils/logger');
+const wifiUtils = require('../wifi/wifi-utils');
+const { calculateSpeedKmH } = require('../utils/gps-utils');
+const fs = require('fs');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+const { spawn } = require('child_process');
+
+const UNIT = process.env.UNIT || "TEST_UNIT";
+const DB_FILE = process.env.DB_FILE || 'beacons.db';
+const COMPANY = process.env.MQTT_COMPANY || 'gunjop';
+
+const MQTT_BROKER = process.env.MQTT_BROKER || 'mqtt://localhost:1883';
+const MQTT_CLIENT_ID = `${uuidv4()}_${UNIT}`;
+const MQTT_USERNAME = process.env.MQTT_USERNAME || null;
+const MQTT_PASSWORD = process.env.MQTT_PASSWORD || null;
+const MQTT_INTERVAL = (parseInt(process.env.MQTT_INTERVAL) || 60) * 1000;
+const MQTT_TOPIC = `${COMPANY}/truck/${UNIT.toLowerCase()}/tracking`;
+const MQTT_GPS_TOPIC = `${COMPANY}/truck/${UNIT.toLowerCase()}/gps`;
+
 // Función para enviar GPS a topic separado
 async function sendGPSDataToMQTT() {
   try {
@@ -55,29 +79,7 @@ async function sendGPSDataToMQTT() {
     logger.error('❌ Error en sendGPSDataToMQTT:', error.message);
   }
 }
-// Servicio MQTT para envío de datos de beacons
-require('dotenv').config();
-const mqtt = require('mqtt');
-const sqlite3 = require('sqlite3').verbose();
-const logger = require('../utils/logger');
-const wifiUtils = require('../wifi/wifi-utils');
-const { calculateSpeedKmH } = require('../utils/gps-utils');
-const fs = require('fs');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
-const { spawn } = require('child_process');
 
-const UNIT = process.env.UNIT || "TEST_UNIT";
-const DB_FILE = process.env.DB_FILE || 'beacons.db';
-const COMPANY = process.env.MQTT_COMPANY || 'gunjop';
-
-const MQTT_BROKER = process.env.MQTT_BROKER || 'mqtt://localhost:1883';
-const MQTT_CLIENT_ID = `${uuidv4()}_${UNIT}`;
-const MQTT_USERNAME = process.env.MQTT_USERNAME || null;
-const MQTT_PASSWORD = process.env.MQTT_PASSWORD || null;
-const MQTT_INTERVAL = (parseInt(process.env.MQTT_INTERVAL) || 60) * 1000;
-const MQTT_TOPIC = `${COMPANY}/truck/${UNIT.toLowerCase()}/tracking`;
-const MQTT_GPS_TOPIC = `${COMPANY}/unit/${UNIT.toLowerCase()}/gps`;
 
 // Cliente MQTT
 let mqttClient = null;

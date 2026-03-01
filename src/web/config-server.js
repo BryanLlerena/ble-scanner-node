@@ -100,9 +100,8 @@ app.post('/api/env', (req, res) => {
 app.post('/api/restart', (req, res) => {
     console.log('Restarting processes via PM2...');
 
-    // Reload process via ecosystem.config.js
-    // Using 'pm2 reload' or 'pm2 restart' with ecosystem file
-    exec('pm2 restart ecosystem.config.js', (error, stdout, stderr) => {
+    // Using 'pm2 restart all' matches the new startup logic where PM2 might be managing various services
+    exec('pm2 restart all', (error, stdout, stderr) => {
         if (error) {
             console.error(`exec error: ${error}`);
             return res.status(500).json({ error: 'Failed to restart processes', details: stderr });
