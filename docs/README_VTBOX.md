@@ -26,28 +26,28 @@ ctrl_interface=/var/run/wpa_supplicant
 ctrl_interface_group=0
 update_config=1
 
-# RED 1: Principal (Prioridad Alta)
+# RED 1: Principal (Mayor Prioridad)
 network={
-    ssid="GUNJOPERS"
-    psk="gunjop2023"
+    ssid="UNDIS_FMS_CL"
+    psk="%cerrolindo123%"
     key_mgmt=WPA-PSK
     priority=10
 }
 
-# RED 2: brll-ryu (Prioridad Media)
+# RED 2: Secundaria (Prioridad Media)
 network={
-    ssid="UNDIS_CL"
-    psk="%Undis2025%"
+    ssid="GUNJOPERS"
+    psk="Gunjop2023"
     key_mgmt=WPA-PSK
     priority=5
 }
 
 # RED 3: Respaldo (Prioridad Baja)
 network={
-    ssid="UNDIS_FMS_CL"
-    psk="%cerrolindo123%"
+    ssid="UNDIS_CL"
+    psk="%Undis2025%"
     key_mgmt=WPA-PSK
-    priority=3
+    priority=1
 }
 EOF
 ```

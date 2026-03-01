@@ -330,9 +330,9 @@ async function publishBeacons() {
       const dTs = new Date(d.timestamp).getTime();
       const mac = d.mac || d.beaconMac || d.address;
 
-      // Si la lectura es más antigua de 2.5 segundos, la ignoramos.
+      // Si la lectura es más antigua de 5 segundos, la ignoramos.
       // (El archivo live_beacons se actualiza cada 2 segs)
-      if (now - dTs > 2500) {
+      if (now - dTs > 5000) {
         return false;
       }
 
