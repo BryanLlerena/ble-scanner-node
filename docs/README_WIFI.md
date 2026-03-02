@@ -78,8 +78,8 @@ cat > /usr/local/bin/wifi-connect.sh << 'SCRIPT'
 INTERFACE=wlan0
 
 echo 0 > /proc/sys/kernel/printk
-rfkill unblock wifi
-rfkill unblock all
+#rfkill unblock wifi
+#rfkill unblock all
 killall wpa_supplicant 2>/dev/null
 killall dhclient 2>/dev/null
 ip link set $INTERFACE up

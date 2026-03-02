@@ -346,21 +346,18 @@ async function publishBeacons() {
     });
 
     if (!currentDevices.length) {
-      logger.debug('📡 No hay lecturas nuevas en este momento exacto');
-      return;
+      logger.debug('📡 No hay lecturas nuevas en este momento exacto, enviando tracking vacío.');
+    } else {
+      // Actualizar registro de enviados comprobados
+      currentDevices.forEach(d => {
+        const dTs = new Date(d.timestamp).getTime();
+        const mac = d.mac || d.beaconMac || d.address;
+        lastSentData[mac] = {
+          timestamp: dTs,
+          rssi: d.rssi
+        };
+      });
     }
-
-    // Actualizar registro de enviados comprobados
-    currentDevices.forEach(d => {
-      const dTs = new Date(d.timestamp).getTime();
-      const mac = d.mac || d.beaconMac || d.address;
-      lastSentData[mac] = {
-        timestamp: dTs,
-        rssi: d.rssi
-      };
-    });
-
-    // Limpieza de memoria (borrar datos de hace más de 1 minuto)
     for (const mac in lastSentData) {
       if (now - lastSentData[mac].timestamp > 60000) {
         delete lastSentData[mac];
