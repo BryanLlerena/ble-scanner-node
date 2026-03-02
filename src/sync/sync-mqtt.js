@@ -319,8 +319,7 @@ async function publishBeacons() {
     }
 
     if (!devices || !devices.length) {
-      logger.debug('📡 No hay datos beacon activos para enviar por MQTT');
-      return;
+      logger.debug('📡 No hay datos beacon activos en el archivo. Se enviará tracking vacío.');
     }
 
     const now = Date.now();
