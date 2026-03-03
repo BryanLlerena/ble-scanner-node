@@ -32,67 +32,128 @@ function fetchLocalData(path) {
     });
 }
 
-// Característica para leer el estado del WiFi
+// Característica NOTIFICABLE para enviar el estado del WiFi continuamente
 class WifiCharacteristic extends bleno.Characteristic {
     constructor() {
         super({
             uuid: WIFI_CHAR_UUID,
-            properties: ['read'],
+            properties: ['read', 'notify'], // Agregamos 'notify'
             value: null
         });
+        this.intervalId = null;
+        this.updateValueCallback = null;
     }
 
+    // Si alguien lee manualmente
     async onReadRequest(offset, callback) {
-        console.log('[BLE Server] Petición de lectura de WiFi recibida');
         try {
             const wifiData = await fetchLocalData('/api/wifi/status');
-            const responseText = `WIFI: ${wifiData.status.toUpperCase()} | SSID: ${wifiData.ssid || 'N/A'} | BSSID: ${wifiData.bssid || 'N/A'}`;
-            console.log(`[BLE Server] Respondiendo WiFi: ${responseText}`);
-            const data = Buffer.from(responseText, 'utf8');
-            callback(this.RESULT_SUCCESS, data.slice(offset));
+            const responseText = `WIFI:${wifiData.status}|SSID:${wifiData.ssid || 'N/A'}`;
+            callback(this.RESULT_SUCCESS, Buffer.from(responseText, 'utf8').slice(offset));
         } catch (err) {
-            console.error('[BLE Server] Error leyendo WiFi:', err.message);
-            const data = Buffer.from('Error obteniendo estado WIFI', 'utf8');
-            callback(this.RESULT_SUCCESS, data.slice(offset));
+            callback(this.RESULT_SUCCESS, Buffer.from('Error WIFI', 'utf8').slice(offset));
+        }
+    }
+
+    // Cuando el cliente enciende "NOTIFY" (suscripción)
+    onSubscribe(maxValueSize, updateValueCallback) {
+        console.log('[BLE Server] Cliente suscrito al WiFi');
+        this.updateValueCallback = updateValueCallback;
+
+        // Empezar a enviar datos cada 2 segundos
+        this.intervalId = setInterval(async () => {
+            try {
+                const wifiData = await fetchLocalData('/api/wifi/status');
+                const responseText = `WIFI:${wifiData.status}|SSID:${wifiData.ssid || 'N/A'}`;
+                // Enviar notificación al cliente
+                if (this.updateValueCallback) {
+                    this.updateValueCallback(Buffer.from(responseText, 'utf8'));
+                }
+            } catch (err) {
+                console.error('[BLE Server] Error enviando notificación WiFi:', err.message);
+            }
+        }, 2000);
+    }
+
+    // Cuando el cliente apaga "NOTIFY" o se desconecta
+    onUnsubscribe() {
+        console.log('[BLE Server] Cliente de-suscrito del WiFi');
+        this.updateValueCallback = null;
+        if (this.intervalId) {
+            clearInterval(this.intervalId);
+            this.intervalId = null;
         }
     }
 }
 
-// Característica para leer MACs recientes
+// Característica NOTIFICABLE para enviar MACs continuamente
 class MacsCharacteristic extends bleno.Characteristic {
     constructor() {
         super({
             uuid: MACS_CHAR_UUID,
-            properties: ['read'],
+            properties: ['read', 'notify'], // Agregamos 'notify'
             value: null
         });
+        this.intervalId = null;
+        this.updateValueCallback = null;
     }
 
     async onReadRequest(offset, callback) {
-        console.log('[BLE Server] Petición de lectura de MACs Scanner recibida');
+        this._sendDataManual(offset, callback);
+    }
+
+    async _sendDataManual(offset, callback) {
         try {
             const bleData = await fetchLocalData('/api/ble/recent');
-            let responseText = `MACs (últimos 30s): `;
-
+            let responseText = `MACs:`;
             if (Array.isArray(bleData) && bleData.length > 0) {
-                // Tomar las 3 MACs más recientes/fuertes para no exceder límites de MTU muy fácilmente
-                const topMacs = bleData.slice(0, 3).map(b => `${b.beaconMac} (${b.rssi}dBm)`).join(', ');
+                // Formato corto para paquetes BLE pequeños
+                const topMacs = bleData.slice(0, 2).map(b => `${b.beaconMac.slice(-5)}(${b.rssi})`).join(', ');
                 responseText += topMacs;
-                if (bleData.length > 3) responseText += `... (+${bleData.length - 3} más)`;
+                if (bleData.length > 2) responseText += `+${bleData.length - 2}`;
             } else {
-                responseText += 'Ninguna detectada';
+                responseText += '0';
             }
-
-            console.log(`[BLE Server] Respondiendo MACs: ${responseText}`);
-            const data = Buffer.from(responseText, 'utf8');
-
-            // Notas sobre MTU: En BLE clásico el máximo es ~20-23 bytes sin negociar MTU
-            // Dependiendo del cliente, puede truncarse. Retornamos todo y dejamos que cliente lo maneje.
-            callback(this.RESULT_SUCCESS, data.slice(offset));
+            callback(this.RESULT_SUCCESS, Buffer.from(responseText, 'utf8').slice(offset));
         } catch (err) {
-            console.error('[BLE Server] Error leyendo MACs:', err.message);
-            const data = Buffer.from('Error obteniendo MACs Scanner', 'utf8');
-            callback(this.RESULT_SUCCESS, data.slice(offset));
+            callback(this.RESULT_SUCCESS, Buffer.from('Error MACs', 'utf8').slice(offset));
+        }
+    }
+
+    onSubscribe(maxValueSize, updateValueCallback) {
+        console.log('[BLE Server] Cliente suscrito a MACs');
+        this.updateValueCallback = updateValueCallback;
+
+        // Empezar a enviar datos cada 1 segundo
+        this.intervalId = setInterval(async () => {
+            try {
+                const bleData = await fetchLocalData('/api/ble/recent');
+                let responseText = `MACs:`;
+
+                if (Array.isArray(bleData) && bleData.length > 0) {
+                    // Abreviamos las MACs para no romper el límite de 20 bytes tan a menudo
+                    const topMacs = bleData.slice(0, 2).map(b => `${b.beaconMac.slice(-5)}(${b.rssi})`).join(',');
+                    responseText += topMacs;
+                    if (bleData.length > 2) responseText += `+${bleData.length - 2}`;
+                } else {
+                    responseText += '0';
+                }
+
+                if (this.updateValueCallback) {
+                    this.updateValueCallback(Buffer.from(responseText, 'utf8'));
+                }
+            } catch (err) {
+                console.error('[BLE Server] Error enviando notificación MACs:', err.message);
+            }
+        }, 1000);
+    }
+
+    onUnsubscribe() {
+        console.log('[BLE Server] Cliente de-suscrito de MACs');
+        this.updateValueCallback = null;
+        if (this.intervalId) {
+            clearInterval(this.intervalId);
+            this.intervalId = null;
         }
     }
 }
