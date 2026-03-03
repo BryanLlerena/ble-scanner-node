@@ -32,78 +32,68 @@ function fetchLocalData(path) {
     });
 }
 
-// Característica NOTIFICABLE para enviar el estado del WiFi continuamente
-class WifiCharacteristic extends bleno.Characteristic {
-    constructor() {
-        super({
-            uuid: WIFI_CHAR_UUID,
-            properties: ['read', 'notify'], // Agregamos 'notify'
-            value: null
-        });
-        this.intervalId = null;
-        this.updateValueCallback = null;
-    }
+// === FIN HELPER ===
 
-    // Si alguien lee manualmente
-    async onReadRequest(offset, callback) {
-        try {
-            const wifiData = await fetchLocalData('/api/wifi/status');
-            const responseText = `WIFI:${wifiData.status}|SSID:${wifiData.ssid || 'N/A'}`;
-            callback(this.RESULT_SUCCESS, Buffer.from(responseText, 'utf8').slice(offset));
-        } catch (err) {
-            callback(this.RESULT_SUCCESS, Buffer.from('Error WIFI', 'utf8').slice(offset));
+let currentAdvertisedName = "VTBOX-Init";
+let advertiseInterval = null;
+
+function updateAdvertising() {
+    Promise.all([
+        fetchLocalData('/api/wifi/status').catch(() => ({ status: 'error' })),
+        fetchLocalData('/api/ble/recent').catch(() => ([]))
+    ]).then(([wifiData, bleData]) => {
+        // Formato ultra-compacto para que quepa en el límite de ~29 bytes del nombre de BLE
+        // WiFi: W=ON/OFF. Si es ON, ponemos SSID.
+        let wifiTxt = `W:${wifiData.status === 'connected' ? 'ON' : 'OFF'}`;
+        if (wifiData.status === 'connected' && wifiData.ssid) {
+            wifiTxt += `|${wifiData.ssid.substring(0, 8)}`; // Max 8 chars del SSID
         }
-    }
 
-    // Cuando el cliente enciende "NOTIFY" (suscripción)
-    onSubscribe(maxValueSize, updateValueCallback) {
-        console.log('[BLE Server] Cliente SUSCRITO al WiFi (NOTIFY ACTIVADO)');
-        this.updateValueCallback = updateValueCallback;
+        // MAC: La más cercana, solo 4 caracteres de MAC y RSSI
+        let macTxt = '';
+        if (Array.isArray(bleData) && bleData.length > 0) {
+            const topMac = bleData[0];
+            // Ejemplo de beaconMac: 'af:20:24:00:00:61' -> últimos 5 chars: '00:61' -> quitamos ':' -> '0061'
+            const last4Digits = topMac.beaconMac.slice(-5).replace(':', '').toUpperCase();
+            macTxt = ` M:${last4Digits}(${topMac.rssi})`; // Ej "M:0061(-44)"
+        }
 
-        // Empezar a enviar datos cada 2 segundos
-        this.intervalId = setInterval(async () => {
-            try {
-                if (!this.updateValueCallback) return; // Ya no hay cliente
+        // Ensamblamos el nuevo nombre (Debe ser < 29 caracteres totales en la práctica)
+        let newName = `${wifiTxt}${macTxt}`.substring(0, 26); // Hard limit de seguridad
 
-                const wifiData = await fetchLocalData('/api/wifi/status');
+        if (newName !== currentAdvertisedName) {
+            console.log(`[BLE Server] Info actualizada. Nuevo nombre de Advertising: "${newName}" (Len: ${newName.length})`);
+            currentAdvertisedName = newName;
 
-                // RECORTADO EXTREMO PARA MTU (Max 20 bytes)
-                // Ejemplo "W:CONNECTED" (11 chars) o "W:UNDIS_FMS" (11 chars)
-                let responseText = `W:${wifiData.status === 'connected' ? 'ON' : 'OFF'}`;
-                if (wifiData.status === 'connected' && wifiData.ssid) {
-                    responseText += `|${wifiData.ssid.substring(0, 10)}`;
-                }
-
-                console.log(`[📡 PUSH WiFi] -> ${responseText} (Len: ${responseText.length})`);
-
-                // Enviar notificación al cliente
-                this.updateValueCallback(Buffer.from(responseText, 'utf8'));
-            } catch (err) {
-                console.error('[BLE Server] Error enviando notificación WiFi:', err.message);
+            // Si bleno está encendido, relanzamos el grito (advertising)
+            if (bleno.state === 'poweredOn') {
+                bleno.stopAdvertising(() => {
+                    bleno.startAdvertising(currentAdvertisedName, [SERVICE_UUID]);
+                });
             }
-        }, 2000);
-    }
-
-    // Cuando el cliente apaga "NOTIFY" o se desconecta
-    onUnsubscribe() {
-        console.log('[BLE Server] Cliente DE-SUSCRITO del WiFi (NOTIFY APAGADO)');
-        this.updateValueCallback = null;
-        if (this.intervalId) {
-            clearInterval(this.intervalId);
-            this.intervalId = null;
         }
-    }
+    });
 }
 
-console.log('[BLE Server] Iniciando servicio de diagnósticos VT-BOX...');
+console.log('[BLE Server] Iniciando servicio de diagnósticos VT-BOX en modo CONNECTIONLESS (Advertising)...');
 
 bleno.on('stateChange', function (state) {
     console.log(`[BLE Server] Cambio de estado bleno: ${state}`);
 
     if (state === 'poweredOn') {
-        bleno.startAdvertising(DEVICE_NAME, [SERVICE_UUID]);
+        // Arrancamos con el nombre inicial
+        bleno.startAdvertising(currentAdvertisedName, [SERVICE_UUID]);
+
+        // Iniciamos el bucle para actualizar el nombre dinámicamente cada 3 segundos
+        if (!advertiseInterval) {
+            advertiseInterval = setInterval(updateAdvertising, 3000);
+        }
     } else {
         bleno.stopAdvertising();
+        if (advertiseInterval) {
+            clearInterval(advertiseInterval);
+            advertiseInterval = null;
+        }
     }
 });
 
@@ -111,20 +101,13 @@ bleno.on('advertisingStart', function (error) {
     if (error) {
         console.error(`[BLE Server] Error iniciando advertising: ${error}`);
     } else {
-        console.log(`[BLE Server] Advertising iniciado. Nombre: ${DEVICE_NAME}`);
-        bleno.setServices([
-            new bleno.PrimaryService({
-                uuid: SERVICE_UUID,
-                characteristics: [
-                    new WifiCharacteristic()
-                ]
-            })
-        ]);
+        console.log(`[BLE Server] Advertising emitido exitosamente. Nombre: "${currentAdvertisedName}"`);
     }
 });
 
+// En modo baliza puro no nos interesa que se conecten, pero por si acaso, logueamos si lo intentan
 bleno.on('accept', function (clientAddress) {
-    console.log(`[BLE Server] Cliente conectado: ${clientAddress}`);
+    console.log(`[BLE Server] ADVERTENCIA: Cliente intentó conectarse: ${clientAddress}. (No se esperan servicios)`);
 });
 
 bleno.on('disconnect', function (clientAddress) {
