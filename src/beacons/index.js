@@ -545,7 +545,7 @@ setInterval(closeExpiredBeaconEvents, 30000);
 // Manejo de excepciones no capturadas (ej. fallos críticos en la inicialización de Bluetooth a nivel de bindings)
 process.on('uncaughtException', (err) => {
   const errorMsg = err.message || '';
-  if (errorMsg.includes('Initialization of USB device failed') || errorMsg.includes('ENODEV')) {
+  if (errorMsg.includes('Initialization of USB device failed') || errorMsg.includes('ENODEV') || errorMsg.includes('unknown handle')) {
     logger.error(`💥 Error crítico de inicialización USB detectado: ${errorMsg}. Ejecutando reinicio de Bluetooth...`);
     try {
       require('child_process').execSync('systemctl restart attach-bluetooth.service');
