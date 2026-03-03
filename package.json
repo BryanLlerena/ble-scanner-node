@@ -26,6 +26,7 @@
     "uuid": "^13.0.0"
   },
   "optionalDependencies": {
-    "@abandonware/noble": "^1.9.2-15"
+    "@abandonware/noble": "^1.9.2-15",
+    "@abandonware/bleno": "^0.6.2"
   }
 }
