@@ -56,6 +56,8 @@ function updateAdvertising() {
             // Ejemplo de beaconMac: 'af:20:24:00:00:61' -> últimos 5 chars: '00:61' -> quitamos ':' -> '0061'
             const last4Digits = topMac.beaconMac.slice(-5).replace(':', '').toUpperCase();
             macTxt = ` M:${last4Digits}(${topMac.rssi})`; // Ej "M:0061(-44)"
+        } else {
+            macTxt = ' M:0(0)';
         }
 
         // Ensamblamos el nuevo nombre (Debe ser < 29 caracteres totales en la práctica)
