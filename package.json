@@ -14,7 +14,8 @@
     "wifi-status": "node src/wifi/wifi-status.js",
     "sync-processor": "node src/sync/sync-processor.js",
     "mqtt-service": "node src/sync/sync-mqtt.js",
-    "regenerate-uuids": "node src/db/regenerate-uuids.js"
+    "regenerate-uuids": "node src/db/regenerate-uuids.js",
+    "ble-server": "node src/diagnostics/ble-server.js"
   },
   "dependencies": {
     "cors": "^2.8.6",

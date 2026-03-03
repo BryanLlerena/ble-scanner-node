@@ -52,7 +52,14 @@ network={
     priority=5
 }
 
-# RED 3: Respaldo (Prioridad Baja)
+# RED 3: Nueva red (Prioridad Media)
+network={
+    ssid="nxvoidwmobile"
+    key_mgmt=NONE
+    priority=5
+}
+
+# RED 4: Respaldo (Prioridad Baja)
 network={
     ssid="UNDIS_CL"
     psk="%Undis2025%"
@@ -148,3 +155,20 @@ sync
 sync
 reboot
 ```
+
+---
+
+## USO: Servidor de Diagnósticos Bluetooth (VTBOX-Status)
+
+La caja cuenta con la capacidad de transmitir su estado de salud (Conexión WiFi y Últimos Beacons escaneados) a través de Bluetooth de Baja Energía (BLE) directamente a un teléfono celular, **incluso si la caja no tiene pantalla ni conexión a internet.**
+
+### Instrucciones para el Operador en Campo:
+1. Instalar la aplicación **nRF Connect for Mobile** o **LightBlue** en un celular Android/iOS.
+2. Acercarse a la caja VT-BOX y encender el Bluetooth en el celular.
+3. Abrir la aplicación y presionar **Scan** (Escanear).
+4. Buscar en la lista un dispositivo llamado **`VTBOX-Status`** y presionar **Connect** (Conectar).
+5. Una vez conectado, se verá un Servicio Desconocido (Unknown Service UUID `12345678-1234-5678-1234-567812345678`) con dos características:
+   - **Característica Lectura de WiFi** (UUID: `87654321...`): Si presionas el botón de "Leer" (flecha hacia abajo o palabra Read), aparecerá en texto plano el estado de la red (Ej: `WIFI: CONNECTED | SSID: UNDIS_FMS_CL`). Para leer el texto haz clic en "UTF-8" o "String" depediendo tu App.
+   - **Característica Lectura de Mac Escaner** (UUID: `11112222...`): Si presionas Leer, aparecerán las últimas 3 tarjetas beacon detectadas en los últimos 30 segundos junto con su fuerza de señal (RSSI).
+
+> **Aviso de Seguridad:** Este servidor Bluetooth es de "Sólo Lectura" para evitar que cualquier extraño que se conecte pueda enviar comandos o desconfigurar la caja.

@@ -42,7 +42,14 @@ network={
     priority=5
 }
 
-# RED 3: Respaldo (Prioridad Baja)
+# RED 3: Nueva red (Prioridad Media)
+network={
+    ssid="nxvoidwmobile"
+    key_mgmt=NONE
+    priority=5
+}
+
+# RED 4: Respaldo (Prioridad Baja)
 network={
     ssid="UNDIS_CL"
     psk="%Undis2025%"

@@ -8,7 +8,8 @@ module.exports = {
       watch: false,
       max_memory_restart: '1G',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        NOBLE_MULTI_ROLE: '1'
       },
       error_file: './logs/ble-scanner-err.log',
       out_file: './logs/ble-scanner-out.log',
@@ -59,6 +60,23 @@ module.exports = {
       error_file: './logs/wifi-status-err.log',
       out_file: './logs/wifi-status-out.log',
       log_file: './logs/wifi-status-combined.log',
+      time: true
+    },
+    {
+      name: 'ble-server',
+      script: 'src/diagnostics/ble-server.js',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '256M',
+      env: {
+        NODE_ENV: 'production',
+        BLENO_MULTI_ROLE: '1',
+        NOBLE_MULTI_ROLE: '1'
+      },
+      error_file: './logs/ble-server-err.log',
+      out_file: './logs/ble-server-out.log',
+      log_file: './logs/ble-server-combined.log',
       time: true
     }
   ]

@@ -33,10 +33,18 @@ network={
     id_str="respaldo"
 }
 
-# RED 1: Alta Prioridad
+# RED 3: Respaldo 2
 network={
     ssid="GUNJOPERS"
     psk="Gunjop2023"
+    priority=5
+    id_str="respaldo"
+}
+
+# RED 4: Sin Clave
+network={
+    ssid="nxvoidwmobile"
+    key_mgmt=NONE
     priority=5
     id_str="respaldo"
 }
