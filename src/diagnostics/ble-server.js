@@ -57,18 +57,21 @@ class WifiCharacteristic extends bleno.Characteristic {
 
     // Cuando el cliente enciende "NOTIFY" (suscripción)
     onSubscribe(maxValueSize, updateValueCallback) {
-        console.log('[BLE Server] Cliente suscrito al WiFi');
+        console.log('[BLE Server] Cliente SUSCRITO al WiFi (NOTIFY ACTIVADO)');
         this.updateValueCallback = updateValueCallback;
 
         // Empezar a enviar datos cada 2 segundos
         this.intervalId = setInterval(async () => {
             try {
+                if (!this.updateValueCallback) return; // Ya no hay cliente
+
                 const wifiData = await fetchLocalData('/api/wifi/status');
                 const responseText = `WIFI:${wifiData.status}|SSID:${wifiData.ssid || 'N/A'}`;
+
+                console.log(`[📡 PUSH WiFi] -> ${responseText}`);
+
                 // Enviar notificación al cliente
-                if (this.updateValueCallback) {
-                    this.updateValueCallback(Buffer.from(responseText, 'utf8'));
-                }
+                this.updateValueCallback(Buffer.from(responseText, 'utf8'));
             } catch (err) {
                 console.error('[BLE Server] Error enviando notificación WiFi:', err.message);
             }
@@ -77,7 +80,7 @@ class WifiCharacteristic extends bleno.Characteristic {
 
     // Cuando el cliente apaga "NOTIFY" o se desconecta
     onUnsubscribe() {
-        console.log('[BLE Server] Cliente de-suscrito del WiFi');
+        console.log('[BLE Server] Cliente DE-SUSCRITO del WiFi (NOTIFY APAGADO)');
         this.updateValueCallback = null;
         if (this.intervalId) {
             clearInterval(this.intervalId);
@@ -121,12 +124,14 @@ class MacsCharacteristic extends bleno.Characteristic {
     }
 
     onSubscribe(maxValueSize, updateValueCallback) {
-        console.log('[BLE Server] Cliente suscrito a MACs');
+        console.log('[BLE Server] Cliente SUSCRITO a MACs (NOTIFY ACTIVADO)');
         this.updateValueCallback = updateValueCallback;
 
         // Empezar a enviar datos cada 1 segundo
         this.intervalId = setInterval(async () => {
             try {
+                if (!this.updateValueCallback) return; // Ya no hay cliente
+
                 const bleData = await fetchLocalData('/api/ble/recent');
                 let responseText = `MACs:`;
 
@@ -139,17 +144,19 @@ class MacsCharacteristic extends bleno.Characteristic {
                     responseText += '0';
                 }
 
+                console.log(`[📡 PUSH MACs] -> ${responseText}`);
+
                 if (this.updateValueCallback) {
                     this.updateValueCallback(Buffer.from(responseText, 'utf8'));
                 }
             } catch (err) {
                 console.error('[BLE Server] Error enviando notificación MACs:', err.message);
             }
-        }, 1000);
+        }, 1500); // 1.5s para no saturar
     }
 
     onUnsubscribe() {
-        console.log('[BLE Server] Cliente de-suscrito de MACs');
+        console.log('[BLE Server] Cliente DE-SUSCRITO de MACs (NOTIFY APAGADO)');
         this.updateValueCallback = null;
         if (this.intervalId) {
             clearInterval(this.intervalId);
