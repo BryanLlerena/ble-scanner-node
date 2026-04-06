@@ -302,64 +302,43 @@ pm2 startup
 mkdir -p /mnt/storage/www
 cd /mnt/storage/www
 
-git clone https://github.com/BryanLlerena/ble-scanner-node.git
-cd ble-scanner-node
+git clone https://github.com/GUNJOP-PERU/tablet-ble-server.git
+cd tablet-ble-server
 
 # Instalar dependencias
 npm install
 
 # Crear .env
 vi .env
-
+```
 #Presionar i
 #pegar 
-    # Rango de escaneo en metros (solo detectar beacons dentro de este rango)
-    SCAN_RANGE=10
+```bash
+# Puerto del servidor
+PORT=3000
 
-    # Tiempo de gracia en segundos antes de cerrar un evento (debounce)
-    DEBOUNCE_TIME=60
+# MQTT (opcional): si defines MQTT_URL se publican los beacons
+MQTT_URL=mqtt://172.15.80.28:1883
+MQTT_TOPIC=porvenir/unit/truck_20
+MQTT_CLIENT_ID=truck_20
+MQTT_USERNAME=porvenir
+MQTT_PASSWORD=porvenir123
 
-    # Tiempo máximo sin detectar un beacon antes de cerrar automáticamente su evento (en segundos)
-    BEACON_TIMEOUT=300
+# Identificador de la unidad (tablet/camión). Se envía en sesiones y beacons MQTT.
+# Si no se define, se usa MQTT_CLIENT_ID.
+UNIT_ID="truck_20"
 
-    # Prefijo MAC de los beacons a procesar (solo estos serán guardados)
-    TARGET_MAC_PREFIX="af:20:24"
+# Sync hacia servidor local (intranet). Ej: http://192.168.1.50
+# Si no se define, el sync está deshabilitado
+SYNC_SERVER_URL=http://172.15.80.28
+```
 
-    # Identificador de la unidad/dispositivo scanner
-    UNIT="TRUCK-1"
-
-    # Configuración de API
-    API_BASE_URL=http://172.235.137.146:3001/api/v1
-
-    # Configuración de sincronización
-    SYNC_INTERVAL=30000
-    INITIAL_SYNC_DELAY=10000
-    SKIP_INTERNET_CHECK=false
-
-    # Configuración de base de datos
-    DB_FILE=beacons.db
-
-    # Configuración del servidor web
-    WEB_PORT=3000
-
-    # Configuración de logging (opcional)
-    LOG_LEVEL=info
-    NODE_ENV=production
-
-    # Variables para MQTT y WiFi
-    MQTT_COMPANY=gunjop
-    MQTT_BROKER=mqtt://paranoid.lat:1883
-    MQTT_USERNAME=porvenir
-    MQTT_PASSWORD=porvenir123
-    MQTT_INTERVAL=60000
-    WIFI_PORT=3030
-    WIFI_DB_FILE=wifi_status.db
-
+```bash
 #presioanr esc dos veces
 
 # 4. Iniciar con PM2
 # Para levantar TODO (Scanner + Web + Sync):
-pm2 start ecosystem.config.js
+pm2 start src/index.js --name "ble-scanner"
 
 # O si solo quieres levantar la WEB por separado:
 # pm2 start web-viewer.js --name web-viewer
