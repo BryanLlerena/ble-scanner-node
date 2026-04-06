@@ -243,7 +243,7 @@ systemctl enable mnt-storage.service
 systemctl start mnt-storage.service
 ```
 
-## Paso 3: Instalación de Node.js (v22.21.1)
+## Paso 3: Instalación de Node.js (v24.13.1)
 
 ```bash
 # 1. Crear directorios para aislamiento
@@ -252,15 +252,15 @@ mkdir -p /mnt/storage/.npm
 mkdir -p /mnt/storage/.pm2
 
 # 2. Descargar binarios
-wget --no-check-certificate https://nodejs.org/dist/v22.21.1/node-v22.21.1-linux-arm64.tar.xz -P /tmp
+wget --no-check-certificate https://nodejs.org/dist/v24.13.1/node-v24.13.1-linux-arm64.tar.xz -P /tmp
 
 # 3. Descomprimir e instalar
 cd /mnt/storage
-tar -xf /tmp/node-v22.21.1-linux-arm64.tar.xz
-mv node-v22.21.1-linux-arm64 nodejs
+tar -xf /tmp/node-v24.13.1-linux-arm64.tar.xz
+mv node-v24.13.1-linux-arm64 nodejs
 
 # 4. Limpieza
-rm /tmp/node-v22.21.1-linux-arm64.tar.xz
+rm /tmp/node-v24.13.1-linux-arm64.tar.xz
 ```
 
 ## Paso 4: Configuración del Entorno Systema
@@ -676,7 +676,6 @@ Tienes dos formas principales de entrar a la terminal de la tablet remotamente:
 
 ---
 
-## 9. Actualización a Node.js 24
+---
 
-Para actualizar la instalación de Node.js existente a la versión 24, consulta la guía detallada:
-[Guía de Actualización a Node.js 24](./UPGRADE_GUIDE_NODE_24.md)
+**Nota:** Esta guía utiliza Node.js v24 por defecto para mayor estabilidad y soporte a largo plazo con las librerías actuales.
