@@ -655,6 +655,167 @@ Tienes dos formas principales de entrar a la terminal de la tablet remotamente:
 
 ---
 
+## Paso 9: Gestión de Energía (Ignición/ACC)
+
+Este script monitorea la señal de ignición (ACC) del vehículo a través del GPIO 117. Si el vehículo se apaga, la pantalla se apagará después de 60 segundos, y la tablet se apagará completamente después de 30 minutos (1800s) si la ignición no regresa.
+
+```bash
+# 1. Crear el script de gestión
+mkdir -p /usr/local/bin
+cat << 'EOF' > /usr/local/bin/acc_screen.py
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import time
+import os
+
+# CONFIGURACIÓN
+ACC_GPIO = 117
+
+# DELAYS (en segundos)
+SCREEN_OFF_DELAY = 60        # Tiempo hasta apagar pantalla
+SHUTDOWN_DELAY = 1800        # Tiempo hasta apagar tablet (total 31 min)
+
+DEBOUNCE_COUNT = 3
+POLL_INTERVAL = 0.2
+
+BACKLIGHT = "/sys/class/backlight/backlight/brightness"
+GPIO_VALUE = f"/sys/class/gpio/gpio{ACC_GPIO}/value"
+GPIO_EXPORT = "/sys/class/gpio/export"
+GPIO_DIRECTION = f"/sys/class/gpio/gpio{ACC_GPIO}/direction"
+
+def exportar_gpio():
+    if not os.path.exists(f"/sys/class/gpio/gpio{ACC_GPIO}"):
+        try:
+            with open(GPIO_EXPORT, 'w') as f:
+                f.write(str(ACC_GPIO))
+            time.sleep(0.2)
+        except Exception as e:
+            print(f"ERROR exportando GPIO: {e}")
+            return False
+    
+    try:
+        with open(GPIO_DIRECTION, 'w') as f:
+            f.write('in')
+        return True
+    except Exception as e:
+        print(f"ERROR configurando GPIO: {e}")
+        return False
+
+def leer_acc():
+    try:
+        with open(GPIO_VALUE, 'r') as f:
+            valor = int(f.read().strip())
+        return valor
+    except Exception as e:
+        print(f"ERROR en lectura GPIO: {e}")
+        return None
+
+def pantalla_encender():
+    try:
+        with open(BACKLIGHT, 'w') as f:
+            f.write('100')
+        print(f"[{time.strftime('%H:%M:%S')}] pantalla ENCENDIDA")
+        return True
+    except Exception as e:
+        print(f"ERROR encendiendo pantalla: {e}")
+        return False
+
+def pantalla_apagar():
+    try:
+        with open(BACKLIGHT, 'w') as f:
+            f.write('0')
+        print(f"[{time.strftime('%H:%M:%S')}] pantalla APAGADA")
+        return True
+    except Exception as e:
+        print(f"ERROR apagando pantalla: {e}")
+        return False
+
+def apagar_tablet():
+    print("APAGANDO TABLET COMPLETAMENTE")
+    os.system("sync")
+    time.sleep(1)
+    os.system("poweroff")
+
+class AntiRebote:
+    def __init__(self, count_required):
+        self.count_required = count_required
+        self.current_value = None
+        self.pending_value = None
+        self.pending_count = 0
+    
+    def actualizar(self, nuevo_valor):
+        if self.current_value is None:
+            self.current_value = nuevo_valor
+            return False
+        if nuevo_valor == self.current_value:
+            self.pending_count = 0
+            return False
+        if nuevo_valor == self.pending_value:
+            self.pending_count += 1
+            if self.pending_count >= self.count_required:
+                self.current_value = nuevo_valor
+                return True
+        else:
+            self.pending_value = nuevo_valor
+            self.pending_count = 1
+        return False
+    def get_valor(self): return self.current_value
+
+def main():
+    if not exportar_gpio(): return
+    
+    filtro_acc = AntiRebote(DEBOUNCE_COUNT)
+    timer_pantalla = None
+    timer_shutdown = None
+    pantalla_esta_apagada = False
+    
+    acc_inicial = leer_acc()
+    if acc_inicial is None: return
+    filtro_acc.actualizar(acc_inicial)
+    
+    if acc_inicial == 1: pantalla_encender()
+    print("Programa de gestión ACC iniciado")
+    
+    try:
+        while True:
+            acc_actual = leer_acc()
+            if acc_actual is not None and filtro_acc.actualizar(acc_actual):
+                acc_nuevo = filtro_acc.get_valor()
+                if acc_nuevo == 1:
+                    timer_pantalla = timer_shutdown = None
+                    pantalla_encender()
+                    pantalla_esta_apagada = False
+                else:
+                    timer_pantalla = time.time()
+            
+            if timer_pantalla and not pantalla_esta_apagada:
+                if time.time() - timer_pantalla >= SCREEN_OFF_DELAY:
+                    pantalla_apagar()
+                    pantalla_esta_apagada = True
+                    timer_pantalla = None
+                    timer_shutdown = time.time()
+            
+            if timer_shutdown and time.time() - timer_shutdown >= SHUTDOWN_DELAY:
+                apagar_tablet()
+                break
+            
+            time.sleep(0.2)
+    except KeyboardInterrupt: pass
+
+if __name__ == "__main__": main()
+EOF
+
+# 2. Hacer ejecutable
+chmod +x /usr/local/bin/acc_screen.py
+
+# 3. Iniciar con PM2
+pm2 start /usr/local/bin/acc_screen.py --name "acc-manager" --interpreter python3
+pm2 save
+```
+
+---
+
 ---
 
 **Nota:** Esta guía utiliza Node.js v24 por defecto para mayor estabilidad y soporte a largo plazo con las librerías actuales.
