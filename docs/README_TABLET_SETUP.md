@@ -1,6 +1,15 @@
 **Requisitos:** Acceso como `root` en la terminal.
 
-## Paso 0: Configuración Regional (Zona Horaria)
+## Paso 0: Preparación Sugerida (Opcional)
+
+Recomendamos instalar un editor de texto amigable como `nano` para facilitar los siguientes pasos:
+
+```bash
+apt-get update
+apt-get install -y nano
+```
+
+## Paso 1: Configuración Regional (Zona Horaria)
 
 Configura el reloj de la tablet para la zona horaria de Perú:
 
@@ -10,9 +19,7 @@ echo "America/Lima" > /etc/timezone
 date  # Verificar la hora actual
 ```
 
-## Paso 1: Crear archivo de configuración de redes
-
-Este archivo almacena tus redes y sus prioridades. `autoscan` asegura que el dispositivo busque redes activamente si se desconecta.
+## Paso 2: Crear archivo de configuración de redes
 
 Ejecuta el siguiente bloque de comando en la terminal:
 
@@ -58,7 +65,7 @@ network={
 EOF
 ```
 
-## Paso 2: Crear el script de conexión
+## Paso 3: Crear el script de conexión
 
 Este script limpia conflictos y lanza el gestor de conexión.
 
@@ -96,7 +103,7 @@ Haz el script ejecutable:
 chmod +x /usr/local/bin/wifi-connect.sh
 ```
 
-## Paso 3: Crear el Servicio de Sistema (Systemd)
+## Paso 4: Crear el Servicio de Sistema (Systemd)
 
 Esto asegura que el script se ejecute automáticamente en cada reinicio.
 
@@ -119,7 +126,7 @@ WantedBy=multi-user.target
 EOF
 ```
 
-## Paso 4: Activar y Probar
+## Paso 5: Activar y Probar
 
 Finalmente, deshabilita el gestor de red predeterminado (para evitar conflictos) y activa tu nuevo servicio.
 
