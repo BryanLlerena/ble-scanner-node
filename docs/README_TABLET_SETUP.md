@@ -1,8 +1,14 @@
-# Guía de Configuración General: Tablet Debian
-
-Esta guía describe los pasos para configurar un servicio robusto que conecta automáticamente a redes WiFi basándose en prioridad y mantiene la conexión activa.
-
 **Requisitos:** Acceso como `root` en la terminal.
+
+## Paso 0: Configuración Regional (Zona Horaria)
+
+Configura el reloj de la tablet para la zona horaria de Perú:
+
+```bash
+ln -sf /usr/share/zoneinfo/America/Lima /etc/localtime
+echo "America/Lima" > /etc/timezone
+date  # Verificar la hora actual
+```
 
 ## Paso 1: Crear archivo de configuración de redes
 
@@ -403,17 +409,23 @@ User=root
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/root/.Xauthority
 
-# Flags de Chromium:
-# --kiosk: Pantalla completa sin barras
-# --no-sandbox: Obligatorio para correr como root
-# --disable-infobars: Quitar avisos de actualización
-# --user-data-dir: Carpeta de perfil persistente en storage
+# Asegurar que Chromium no intente traducir la página (Política de Sistema)
+ExecStartPre=/bin/mkdir -p /etc/chromium/policies/managed/
+ExecStartPre=/bin/bash -c "echo '{\"TranslateEnabled\": false}' > /etc/chromium/policies/managed/no-translate.json"
+
 ExecStart=/usr/bin/chromium \
   --kiosk \
   --no-sandbox \
   --window-position=0,0 \
   --window-size=1280,800 \
   --disable-infobars \
+  --disable-features=KeyboardShortcuts,TranslateUI \
+  --disable-translate \
+  --disable-pinch \
+  --overscroll-history-navigation=0 \
+  --no-first-run \
+  --disable-session-crashed-bubble \
+  --lang=es \
   --user-data-dir=/mnt/storage/chromium-profile \
   http://localhost:3001
 
@@ -812,6 +824,48 @@ chmod +x /usr/local/bin/acc_screen.py
 # 3. Iniciar con PM2
 pm2 start /usr/local/bin/acc_screen.py --name "acc-manager" --interpreter python3
 pm2 save
+```
+
+---
+
+## Paso 10: Control de Brillo (Teclado)
+
+Este bloque permite controlar el brillo de la pantalla usando las teclas **F1** (bajar) y **F2** (subir) mediante el paquete `triggerhappy`.
+
+```bash
+# 1. Crear el script de ajuste de brillo
+cat << 'EOF' > /usr/local/bin/brightness.sh
+#!/bin/bash
+BRIGHTNESS_FILE="/sys/class/backlight/backlight/brightness"
+CURRENT=$(cat $BRIGHTNESS_FILE)
+STEP=10
+
+case "$1" in
+    up)
+        NEW=$((CURRENT + STEP))
+        [ $NEW -gt 100 ] && NEW=100
+        ;;
+    down)
+        NEW=$((CURRENT - STEP))
+        [ $NEW -lt 1 ] && NEW=1
+        ;;
+esac
+
+echo $NEW > $BRIGHTNESS_FILE
+EOF
+
+# 2. Hacer ejecutable
+chmod +x /usr/local/bin/brightness.sh
+
+# 3. Configurar los disparadores (Triggers)
+mkdir -p /etc/triggerhappy/triggers.d/
+cat << 'EOF' > /etc/triggerhappy/triggers.d/brightness-keys.conf
+KEY_F1 1 /usr/local/bin/brightness.sh down
+KEY_F2 1 /usr/local/bin/brightness.sh up
+EOF
+
+# 4. Reiniciar el servicio
+systemctl restart triggerhappy
 ```
 
 ---
