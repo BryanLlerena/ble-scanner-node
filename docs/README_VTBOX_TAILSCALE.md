@@ -1,7 +1,4 @@
-================================================================================
 GUÍA DE INSTALACIÓN PERSISTENTE DE TAILSCALE EN VTBOX (YOCTO/ARM64)
-================================================================================
-
 DESCRIPCIÓN:
 Método de instalación "Side-load" utilizando un servidor HTTP local para evitar 
 errores de SSL/TLS con el wget antiguo del dispositivo. Incluye configuración 
@@ -43,31 +40,37 @@ cd /mnt/storage/tailscale_install
 PASO 3: INSTALACIÓN DE BINARIOS
 --------------------------------------------------------------------------------
 # Descomprimir
+```bash
 tar xzf tailscale_1.56.1_arm64.tgz
-
+```
 # Crear carpeta de binarios persistente
+```bash
 mkdir -p /mnt/storage/bin
-
+```
 # Mover ejecutables
+```bash
 cp tailscale_1.56.1_arm64/tailscale /mnt/storage/bin/
 cp tailscale_1.56.1_arm64/tailscaled /mnt/storage/bin/
-
+```
 # Dar permisos de ejecución
+```bash
 chmod +x /mnt/storage/bin/tailscale
 chmod +x /mnt/storage/bin/tailscaled
-
+```
 # Crear enlaces simbólicos (Symlinks) al sistema
+```bash
 ln -sf /mnt/storage/bin/tailscale /usr/bin/tailscale
 ln -sf /mnt/storage/bin/tailscaled /usr/sbin/tailscaled
-
+```
 --------------------------------------------------------------------------------
 PASO 4: CONFIGURACIÓN DE PERSISTENCIA Y SERVICIO
 --------------------------------------------------------------------------------
 # Crear carpeta para guardar la identidad (Login)
+```bash
 mkdir -p /mnt/storage/tailscale_state
-
-# Crear el servicio Systemd optimizado para Yocto
 ```
+# Crear el servicio Systemd optimizado para Yocto
+```bash
 cat > /etc/systemd/system/tailscaled.service << 'EOF'
 [Unit]
 Description=Tailscale node agent
