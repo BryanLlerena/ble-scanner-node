@@ -136,63 +136,58 @@ mkdir -p /mnt/storage/.npm
 mkdir -p /mnt/storage/.pm2
 ```
 
-## Step 3: Descargar e Instalar Node.js (v22.21.1)
+## Paso 3: Instalación de Node.js (v24.13.1)
 
 ```bash
-# Descargar binarios
-wget --no-check-certificate https://nodejs.org/dist/v22.21.1/node-v22.21.1-linux-arm64.tar.xz -P /tmp
-
-# Validar descarga
-ls -lh /tmp/node-v22.21.1-linux-arm64.tar.xz
-
-# Descomprimir en /mnt/storage
+# 1. Crear directorios para aislamiento
 cd /mnt/storage
-tar -xf /tmp/node-v22.21.1-linux-arm64.tar.xz
+mkdir -p /mnt/storage/.npm
+mkdir -p /mnt/storage/.pm2
 
-# Renombrar carpeta
-mv node-v22.21.1-linux-arm64 nodejs
+# 2. Descargar binarios
+wget --no-check-certificate https://nodejs.org/dist/v24.13.1/node-v24.13.1-linux-arm64.tar.xz -P /tmp
 
-# Limpiar archivos temporales
-rm /tmp/node-v22.21.1-linux-arm64.tar.xz
+# 3. Descomprimir e instalar
+cd /mnt/storage
+tar -xf /tmp/node-v24.13.1-linux-arm64.tar.xz
+mv node-v24.13.1-linux-arm64 nodejs
+
+# 4. Limpieza
+rm /tmp/node-v24.13.1-linux-arm64.tar.xz
 ```
 
-## Step 4: Configuración del Sistema
+## Paso 4: Configuración del Entorno Systema
 
 ```bash
-# Enlaces Simbólicos
+# 1. Enlaces Simbólicos
 ln -sf /mnt/storage/nodejs/bin/node /usr/bin/node
 ln -sf /mnt/storage/nodejs/bin/npm /usr/bin/npm
 ln -sf /mnt/storage/nodejs/bin/npx /usr/bin/npx
 
-# Agregar Binarios al Path y Configurar PM2_HOME para persistencia
+# 2. Hacer persistentes las variables de entorno
+echo 'export PATH="/mnt/storage/nodejs/bin:$PATH"' >> /etc/profile
+echo 'export PM2_HOME="/mnt/storage/.pm2"' >> /etc/profile
+
+# 3. Exportar variables para la sesión actual
 export PATH="/mnt/storage/nodejs/bin:$PATH"
 export PM2_HOME="/mnt/storage/.pm2"
 
-# Hacer persistente en /etc/profile
-echo 'export PATH="/mnt/storage/nodejs/bin:$PATH"' >> /etc/profile
-echo 'export PM2_HOME="/mnt/storage/.pm2"' >> /etc/profile
-```
-
-### Configurar NPM y Verificar
-
-```bash
-# Configurar cache de npm en storage (Vital para evitar llenar root)
+# 4. Configurar cache de NPM en storage
 npm config set cache /mnt/storage/.npm --global
 
-# Verificar instalación
+# 5. Verificar versiones
 node --version
 npm --version
 ```
 
-## Step 5: Instalar PM2
+## Paso 5: Instalar PM2 y Desplegar Aplicación
 
 ```bash
-# Instalar Pm2 globalmente
+# 1. Instalar PM2 globalmente
 npm install -g pm2
 ln -sf /mnt/storage/nodejs/bin/pm2 /usr/bin/pm2
 
-# Iniciar pm2 al reiniciar
-# PM2 usará el PM2_HOME definido en el paso 4
+# 2. Configurar arranque automático de PM2
 pm2 startup
 ```
 
